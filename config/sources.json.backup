@@ -1,0 +1,289 @@
+{
+  "_meta": {
+    "version": "0.2.0",
+    "updated": "2026-06-18",
+    "updated_by": "raven",
+    "description": "Источники для сканирования бесплатных LLM API"
+  },
+  "sources": [
+    {
+      "id": "reddit_localllama",
+      "type": "reddit",
+      "name": "Reddit r/LocalLLaMA",
+      "url": "https://www.reddit.com/r/LocalLLaMA/search.json?q=free+API+OR+free+tier+OR+free+credits+OR+giveaway&sort=new&limit=25&t=month",
+      "enabled": true,
+      "priority": 1,
+      "notes": "Reddit может блокировать без User-Agent. Использовать yandex.sh прокси если 403."
+    },
+    {
+      "id": "reddit_machinelearning",
+      "type": "reddit",
+      "name": "Reddit r/MachineLearning",
+      "url": "https://www.reddit.com/r/MachineLearning/search.json?q=free+LLM+API+OR+free+inference&sort=new&limit=25&t=month",
+      "enabled": true,
+      "priority": 2,
+      "notes": "Тоже что и выше — прокси может понадобиться."
+    },
+    {
+      "id": "github_awesome_free_llm",
+      "type": "github_raw",
+      "name": "awesome-free-llm-apis (mnfst)",
+      "url": "https://raw.githubusercontent.com/mnfst/awesome-free-llm-apis/main/README.md",
+      "enabled": true,
+      "priority": 1,
+      "notes": "Curated list, только permanent free tiers. Мониторить на новые PR."
+    },
+    {
+      "id": "github_free_llm_api_keys",
+      "type": "github_raw",
+      "name": "free-llm-api-keys (alistaitsacle)",
+      "url": "https://raw.githubusercontent.com/alistaitsacle/free-llm-api-keys/main/README.md",
+      "enabled": true,
+      "priority": 2,
+      "notes": "Коллекция бесплатных ключей."
+    },
+    {
+      "id": "costgoat_openrouter",
+      "type": "web_page",
+      "name": "CostGoat OpenRouter Free Models",
+      "url": "https://costgoat.com/pricing/openrouter-free-models",
+      "enabled": true,
+      "priority": 1,
+      "notes": "Live рейтинг бесплатных моделей OpenRouter. Обновляется регулярно."
+    },
+    {
+      "id": "getaiperks_blog",
+      "type": "web_page",
+      "name": "GetAIPerks Blog",
+      "url": "https://www.getaiperks.com/en/blogs/",
+      "enabled": true,
+      "priority": 2,
+      "notes": "Гайды по получению кредитов. Новые программы появляются тут."
+    }
+  ],
+  "provider_pages": [
+    {
+      "id": "openrouter",
+      "name": "OpenRouter (free models)",
+      "url": "https://openrouter.ai/keys",
+      "docs_url": "https://openrouter.ai/docs/free-models",
+      "credit_card": false,
+      "status": "verified",
+      "verified_by": "zavlab",
+      "models_count": 27,
+      "limits": {
+        "rpm": 20,
+        "rpd": 200
+      }
+    },
+    {
+      "id": "google_ai_studio",
+      "name": "Google AI Studio (Gemini)",
+      "url": "https://aistudio.google.com/apikey",
+      "docs_url": "https://ai.google.dev/gemini-api/docs/api-key",
+      "credit_card": false,
+      "status": "confirmed",
+      "limits": {
+        "rpm": 1500,
+        "rpd": 1500,
+        "tpm": 1000000
+      },
+      "context": 1000000,
+      "warning": "ToS: business use only, not consumer. Blocked in EU/UK/CH."
+    },
+    {
+      "id": "groq",
+      "name": "Groq",
+      "url": "https://console.groq.com/keys",
+      "docs_url": "https://console.groq.com/docs/quickstart",
+      "credit_card": false,
+      "status": "verified",
+      "verified_by": "zavlab",
+      "limits": {
+        "rpm": 30
+      },
+      "notes": "LPU inference, молниеносная скорость.",
+      "models": [
+        "openai/gpt-oss-20b",
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant"
+      ],
+      "rate_limit": "14400 req/day, 6000 tokens/min"
+    },
+    {
+      "id": "cerebras",
+      "name": "Cerebras",
+      "url": "https://cloud.cerebras.ai",
+      "docs_url": "https://docs.cerebras.ai/",
+      "credit_card": false,
+      "status": "verified",
+      "verified_by": "zavlab",
+      "limits": {
+        "tps": 2600
+      },
+      "notes": "До 2600 токенов/сек на Llama 3.3 70B.",
+      "models": [
+        "gpt-oss-120b",
+        "zai-glm-4.7"
+      ],
+      "rate_limit": "5 RPM / 30K tokens/min"
+    },
+    {
+      "id": "mistral",
+      "name": "Mistral",
+      "url": "https://console.mistral.ai",
+      "docs_url": "https://docs.mistral.ai/",
+      "credit_card": false,
+      "status": "verified",
+      "verified_by": "zavlab",
+      "limits": {
+        "rps": 1,
+        "tpm": 500000
+      },
+      "models": [
+        "mistral-small-latest",
+        "mistral-large-latest",
+        "open-mistral-nemo",
+        "codestral-latest"
+      ],
+      "rate_limit": "50 RPM / 500K tokens/min"
+    },
+    {
+      "id": "cloudflare_workers_ai",
+      "name": "Cloudflare Workers AI",
+      "url": "https://developers.cloudflare.com/workers-ai/",
+      "docs_url": "https://developers.cloudflare.com/workers-ai/platform/pricing/",
+      "credit_card": false,
+      "status": "verified",
+      "verified_by": "zavlab",
+      "notes": "Edge inference, 10K нейронов/день бесплатно."
+    },
+    {
+      "id": "nvidia_nim",
+      "name": "NVIDIA NIM",
+      "url": "https://build.nvidia.com/",
+      "docs_url": "https://docs.nvidia.com/nim/",
+      "credit_card": false,
+      "status": "confirmed",
+      "limits": {
+        "rpm": 40
+      },
+      "context": 262000,
+      "warning": "ToS: evaluation only, not production."
+    },
+    {
+      "id": "cohere",
+      "name": "Cohere",
+      "url": "https://dashboard.cohere.com/api-keys",
+      "docs_url": "https://docs.cohere.com/",
+      "credit_card": false,
+      "status": "verified",
+      "models": [
+        "command-r-plus-08-2024",
+        "command-a-plus-05-2026",
+        "c4ai-aya-expanse-32b"
+      ],
+      "rate_limit": "1000 calls/month"
+    },
+    {
+      "id": "huggingface",
+      "name": "Hugging Face Inference API",
+      "url": "https://huggingface.co/settings/tokens",
+      "docs_url": "https://huggingface.co/docs/api-inference/",
+      "credit_card": false,
+      "status": "confirmed"
+    },
+    {
+      "id": "github_models",
+      "name": "GitHub Models",
+      "url": "https://github.com/marketplace/models",
+      "docs_url": "https://docs.github.com/en/github-models",
+      "credit_card": false,
+      "status": "confirmed",
+      "notes": "Нужен GitHub аккаунт."
+    },
+    {
+      "id": "together_ai",
+      "name": "Together AI",
+      "url": "https://api.together.ai/",
+      "docs_url": "https://docs.together.ai/",
+      "credit_card": false,
+      "status": "confirmed",
+      "notes": "$25 кредитов при регистрации."
+    },
+    {
+      "id": "z_ai",
+      "name": "Z.ai (GLM)",
+      "url": "https://z.ai/",
+      "credit_card": false,
+      "status": "confirmed",
+      "notes": "GLM модели, бесплатный тир."
+    },
+    {
+      "id": "kilo_gateway",
+      "name": "Kilo Gateway",
+      "url": "https://kilo.ai/",
+      "credit_card": false,
+      "status": "confirmed",
+      "notes": "Анонимный доступ, :free routes."
+    },
+    {
+      "id": "pollinations",
+      "name": "Pollinations",
+      "url": "https://pollinations.ai/",
+      "credit_card": false,
+      "status": "confirmed",
+      "notes": "Анонимный доступ, GPT-OSS 20B."
+    },
+    {
+      "id": "ovh_ai",
+      "name": "OVH AI Endpoints",
+      "url": "https://www.ovhcloud.com/en-ai/",
+      "credit_card": false,
+      "status": "confirmed",
+      "notes": "Анонимный доступ, Qwen3.5 397B."
+    },
+    {
+      "id": "opencode_zen",
+      "name": "OpenCode Zen",
+      "url": "https://opencode.ai/",
+      "credit_card": false,
+      "status": "confirmed",
+      "notes": "DeepSeek V4 Flash, Nemotron промо."
+    }
+  ],
+  "startup_programs": [
+    {
+      "id": "openai_startup",
+      "name": "OpenAI Startup Program",
+      "url": "https://openai.com/startups",
+      "credit_range": "$2,500-$100,000",
+      "requirements": "VC-backed startup",
+      "status": "research"
+    },
+    {
+      "id": "anthropic_startup",
+      "name": "Anthropic Startup Program",
+      "url": "https://www.anthropic.com/startups",
+      "credit_range": "$25,000",
+      "requirements": "Startup with funding",
+      "status": "research"
+    },
+    {
+      "id": "google_cloud_startup",
+      "name": "Google Cloud for Startups",
+      "url": "https://cloud.google.com/startup",
+      "credit_range": "$350,000",
+      "requirements": "VC-backed, < $10M raised",
+      "status": "research"
+    },
+    {
+      "id": "aws_startup",
+      "name": "AWS Activate",
+      "url": "https://aws.amazon.com/activate/",
+      "credit_range": "$300,000",
+      "requirements": "Early-stage startup",
+      "status": "research"
+    }
+  ]
+}

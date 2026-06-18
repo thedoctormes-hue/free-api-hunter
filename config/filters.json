@@ -1,0 +1,93 @@
+{
+  "_meta": {
+    "version": "0.2.0",
+    "updated": "2026-06-18",
+    "updated_by": "raven",
+    "description": "Настройки фильтрации мусора и скоринга"
+  },
+  "dedup": {
+    "enabled": true,
+    "key_fields": ["provider_name", "models", "limits"],
+    "ttl_hours": 72,
+    "check_url_uniqueness": true
+  },
+  "quality_threshold": {
+    "min_description_length": 50,
+    "require_url": true,
+    "require_api_key_url": false,
+    "exclude_expired": true,
+    "min_profit_estimate": 5,
+    "max_age_days": 30
+  },
+  "spam_filters": {
+    "exclude_domains": [
+      "medium.com",
+      "substack.com",
+      "linkedin.com/posts",
+      "facebook.com",
+      "tiktok.com"
+    ],
+    "exclude_keywords": [
+      "купить", "продать", "скидка", "рефералка", "referral", "affiliate",
+      "course", "tutorial", "how to", "learn", "training",
+      "seo", "marketing", "course", "ebook", "pdf",
+      "telegram канал", "чат бот", "подписка"
+    ],
+    "exclude_credit_card_required": true,
+    "exclude_trash_sources": [
+      "pastebin.com",
+      "ghostbin.com",
+      "rentry.co"
+    ]
+  },
+  "scoring": {
+    "profit_weight": 0.4,
+    "reliability_weight": 0.3,
+    "freshness_weight": 0.2,
+    "ease_weight": 0.1,
+    "reliability_scores": {
+      "official_docs": 1.0,
+      "verified_community": 0.8,
+      "aggregator": 0.7,
+      "community_post": 0.5,
+      "anonymous": 0.3
+    },
+    "freshness_scores": {
+      "days_0_7": 1.0,
+      "days_8_30": 0.7,
+      "days_31_90": 0.3,
+      "days_90_plus": 0.1
+    },
+    "min_alert_score": 0.4,
+    "high_priority_score": 0.7
+  },
+  "priority_rules": [
+    {
+      "condition": "status == verified AND credit_card == false",
+      "priority": 1,
+      "label": "✅ подтверждённый бесплатный"
+    },
+    {
+      "condition": "status == confirmed AND credit_card == false",
+      "priority": 2,
+      "label": "🆕 заявленный бесплатный"
+    },
+    {
+      "condition": "status == research AND credit_range > $10000",
+      "priority": 3,
+      "label": "💰 стартап-программа"
+    },
+    {
+      "condition": "credit_card == true",
+      "priority": 9,
+      "label": "💳 требует карту"
+    }
+  ],
+  "alert_format": {
+    "emoji_new": "🆕",
+    "emoji_verified": "✅",
+    "emoji_high_value": "💰",
+    "emoji_warning": "⚠️",
+    "fields": ["provider", "models", "limits", "registration_url", "profit_estimate", "warnings"]
+  }
+}
