@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"free-api-hunter/internal/orex"
 )
 
 var logger = log.New(os.Stderr, "[alerter] ", log.LstdFlags)
@@ -105,4 +107,80 @@ func FormatKeyPoolReport(active, total int, providers []string) string {
 
 	b.WriteString(fmt.Sprintf("\n⏰ %s UTC", time.Now().Format("2006-01-02 15:04")))
 	return b.String()
+}
+
+// ============================================================
+// Orex alerts
+// ============================================================
+
+// FormatOrexNewModelAlert — алерт о новой бесплатной модели из Orex
+func FormatOrexNewModelAlert(freeModels []orex.FreeModel, newCount int) string {
+	var b strings.Builder
+	b.WriteString("🆕 <b>Orex — New Free Models</b>\n\n")
+	b.WriteString(fmt.Sprintf("Found <b>%d</b> new free models:\n\n", newCount))
+
+	// Показываем первые 10
+	limit := 10
+	if len(freeModels) < limit {
+		limit = len(freeModels)
+	}
+	for i := 0; i < limit; i++ {
+		fm := freeModels[i]
+		b.WriteString(fmt.Sprintf("  • <b>%s</b> (%s) — ctx: %d\n", fm.Name, fm.Provider, fm.ContextLength))
+	}
+	if len(freeModels) > limit {
+		b.WriteString(fmt.Sprintf("\n  ... and %d more", len(freeModels)-limit))
+	}
+
+	b.WriteString(fmt.Sprintf("\n⏰ %s UTC", time.Now().Format("2006-01-02 15:04")))
+	return b.String()
+}
+
+// FormatOrexAlertEvent — алерт о событии из Orex
+func FormatOrexAlertEvent(alert orex.OrexAlert) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("⚠️ <b>Orex Alert — %s</b>\n\n", strings.ToUpper(alert.Type)))
+	b.WriteString(fmt.Sprintf("Model: <b>%s</b>\n", alert.Model))
+	b.WriteString(fmt.Sprintf("Message: %s\n", alert.Message))
+	b.WriteString(fmt.Sprintf("\n⏰ %s", alert.Timestamp))
+	return b.String()
+}
+
+// FormatOrexSyncReport — отчёт о синхронизации с Orex
+func FormatOrexSyncReport(totalFree, newModels, alertsCount int) string {
+	var b strings.Builder
+	b.WriteString("🔄 <b>Orex Sync Report</b>\n\n")
+	b.WriteString(fmt.Sprintf("Free models: <b>%d</b>\n", totalFree))
+	b.WriteString(fmt.Sprintf("New models: <b>%d</b>\n", newModels))
+	b.WriteString(fmt.Sprintf("Alerts: <b>%d</b>\n", alertsCount))
+	b.WriteString(fmt.Sprintf("\n⏰ %s UTC", time.Now().Format("2006-01-02 15:04")))
+	return b.String()
+}
+
+// OrexAlertEvent — событие для отправки через alerter (JSON для Бестии)
+type OrexAlertEvent struct {
+	Event     string `json:"event"`
+	Provider  string `json:"provider"`
+	Model     string `json:"model"`
+	Status    string `json:"status"`
+	Details   string `json:"details"`
+	Timestamp string `json:"timestamp"`
+}
+
+// NewOrexAlertEvent — создать событие Orex
+func NewOrexAlertEvent(eventType, provider, model, status, details string) *OrexAlertEvent {
+	return &OrexAlertEvent{
+		Event:     eventType,
+		Provider:  provider,
+		Model:     model,
+		Status:    status,
+		Details:   details,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+}
+
+// ToJSON — сериализовать событие в JSON
+func (e *OrexAlertEvent) ToJSON() string {
+	b, _ := json.Marshal(e)
+	return string(b)
 }

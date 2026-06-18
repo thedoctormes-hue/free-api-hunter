@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"free-api-hunter/internal/models"
+	"free-api-hunter/internal/orex"
 )
 
 // DataDir — директория для данных
@@ -185,4 +186,96 @@ func writeJSON(path string, data interface{}) error {
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
 	return enc.Encode(data)
+}
+
+// ============================================================
+// Orex integration
+// ============================================================
+
+// OrexCache — кэш данных от Orex
+type OrexCache struct {
+	Meta       meta              `json:"_meta"`
+	FreeModels []orex.FreeModel  `json:"free_models"`
+	Alerts     []orex.OrexAlert  `json:"alerts"`
+}
+
+// SaveOrexCache — сохранить кэш Orex
+func SaveOrexCache(cache *OrexCache, path string) error {
+	if err := EnsureDir(); err != nil {
+		return err
+	}
+	if path == "" {
+		path = filepath.Join(DataDir, "orex_cache.json")
+	}
+	cache.Meta = meta{
+		Version: "0.1.0",
+		Updated: time.Now().UTC().Format(time.RFC3339),
+		Count:   len(cache.FreeModels),
+	}
+	return writeJSON(path, cache)
+}
+
+// LoadOrexCache — загрузить кэш Orex
+func LoadOrexCache(path string) (*OrexCache, error) {
+	if path == "" {
+		path = filepath.Join(DataDir, "orex_cache.json")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var cache OrexCache
+	if err := json.Unmarshal(data, &cache); err != nil {
+		return nil, err
+	}
+	return &cache, nil
+}
+
+// MergeOrexProviders — объединить бесплатные модели Orex с локальными провайдерами
+func MergeOrexProviders(existing []*models.Provider, freeModels []orex.FreeModel) []*models.Provider {
+	index := make(map[string]int)
+	for i, p := range existing {
+		index[p.Name] = i
+	}
+
+	now := models.Now()
+
+	for _, fm := range freeModels {
+		if idx, ok := index[fm.Provider]; ok {
+			// Провайдер уже есть — добавляем модель если новая
+			p := existing[idx]
+			modelExists := false
+			for _, m := range p.Models {
+				if m == fm.Name {
+					modelExists = true
+					break
+				}
+			}
+			if !modelExists {
+				p.Models = append(p.Models, fm.Name)
+			}
+			if p.Status == models.StatusUnverified {
+				p.Status = models.StatusClaimed
+			}
+		} else {
+			// Новый провайдер из Orex
+			existing = append(existing, &models.Provider{
+				Name:         fm.Provider,
+				URL:          "https://openrouter.ai",
+				APIKeyURL:    "https://openrouter.ai/keys",
+				CreditCard:   false,
+				Status:       models.StatusClaimed,
+				Models:       []string{fm.Name},
+				Source:       "orex",
+				Priority:     models.PriorityMed,
+				DiscoveredAt: now,
+			})
+			index[fm.Provider] = len(existing) - 1
+		}
+	}
+
+	return existing
 }

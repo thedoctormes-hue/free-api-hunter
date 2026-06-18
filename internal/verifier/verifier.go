@@ -10,8 +10,12 @@ import (
 	"time"
 
 	"free-api-hunter/internal/models"
+	"free-api-hunter/internal/orex"
 	"free-api-hunter/internal/vault"
 )
+
+// ensure orex import is used
+var _ = orex.FreeModel{}
 
 var logger = log.New(log.Writer(), "[verifier] ", log.LstdFlags)
 
