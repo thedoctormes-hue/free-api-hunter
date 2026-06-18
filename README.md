@@ -149,6 +149,42 @@ PriorityLow  (3)  — deprioritized/unverified
 PrioritySkip (9)  — credit card required, пропускать
 ```
 
+## Orex Integration
+
+Orex (OpenRouter Expert) — внешний сервис `http://127.0.0.1:8710`, предоставляющий каталог моделей, цены и алерты.
+
+### Использование
+
+```bash
+# Синхронизация с Orex перед сканированием
+./hunter --orex-sync
+
+# Полный цикл с Orex + верификация
+./hunter --orex-sync --verify
+```
+
+### Что делает --orex-sync
+
+1. Вызывает `Orex.Sync()` — обновляет базу моделей
+2. Загружает бесплатные модели (`Orex.GetFreeModels()`)
+3. Сохраняет кэш в `data/orex_cache.json`
+4. Объединяет данные с локальными провайдерами (`MergeOrexProviders`)
+5. Отправляет алерт о новых моделях (если настроен Telegram)
+
+### Быстрая верификация
+
+Если Orex подтверждает что модель бесплатная (`pricing.prompt=0, pricing.completion=0`), верификатор пропускает тяжёлый HTML-парсинг страницы провайдера и сразу ставит статус `confirmed`.
+
+### Структура данных
+
+```
+data/
+├── providers.json      # локальные провайдеры
+├── findings.json       # находки сканера
+├── key_pool.json       # пул ключей
+└── orex_cache.json     # кэш Orex (бесплатные модели)
+```
+
 ## План развития
 
 ### v0.5 (текущая итерация)

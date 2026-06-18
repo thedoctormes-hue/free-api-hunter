@@ -4,6 +4,10 @@
 
 Free API Hunter — система для обнаружения, верификации и мониторинга бесплатных LLM API.
 
+**Версия:** v0.5.0 (Orex integration)
+**Разработчик:** Штрейкбрехер
+**Репозиторий:** https://github.com/thedoctormes-hue/free-api-hunter
+
 ## Архитектура
 
 ```
@@ -169,15 +173,57 @@ cf-ai-neurons: 1.98
 
 ## Cron-задачи
 
+Системный crontab (пользователь `root`):
+
 ```bash
-# Health-check каждые 30 минут
-*/30 * * * * /root/LabDoctorM/workspaces/streikbrecher/projects/hunter_check.sh check
+# Полный скан с верификацией каждые 6 часов
+0 */6 * * * cd /root/LabDoctorM/projects/free-api-hunter && ./hunter --verify >> /var/log/free-api-hunter/scan.log 2>&1
 
-# Полный скан каждые 6 часов
-0 */6 * * * cd /root/LabDoctorM/workspaces/streikbrecher/projects && ./hunter --verify
+# Ежедневный dry-run для алерта (08:00 UTC)
+0 8 * * * cd /root/LabDoctorM/projects/free-api-hunter && ./hunter --dry-run >> /var/log/free-api-hunter/report.log 2>&1
 
-# Ежедневный отчёт
-0 8 * * * cd /root/LabDoctorM/workspaces/streikbrecher/projects && ./hunter --all
+# Быстрый скан без верификации каждые 3 часа
+0 */3 * * * cd /root/LabDoctorM/projects/free-api-hunter && ./hunter >> /var/log/free-api-hunter/quick.log 2>&1
+```
+
+## Orex Integration
+
+Orex (OpenRouter Expert) — внешний сервис `http://127.0.0.1:8710`, предоставляющий каталог моделей, цены и алерты.
+
+### Эндпоинты
+
+| Эндпоинт | Метод | Описание |
+|----------|-------|----------|
+| `/api/models` | GET | Список моделей |
+| `/api/models?pricing_free=true` | GET | Только бесплатные модели |
+| `/api/models?provider=X` | GET | Модели конкретного провайдера |
+| `/api/select?task_type=X` | GET | Подбор модели под задачу |
+| `/api/pricing/cost` | GET | Расчёт стоимости |
+| `/api/sync` | GET | Синхронизация базы |
+| `/api/alerts` | GET | Алерты о новых моделях |
+| `/api/alerts?since=T` | GET | Алерты с времени T |
+
+### Схема событий для алертера
+
+```json
+{
+  "event": "new_orex_model",
+  "provider": "cerebras",
+  "model": "gpt-oss-120b",
+  "status": "ok",
+  "details": "New free model available",
+  "timestamp": "2026-06-18T12:00:00Z"
+}
+```
+
+### Файлы данных
+
+```
+data/
+├── providers.json      # локальные провайдеры
+├── findings.json       # находки сканера
+├── key_pool.json       # пул ключей
+└── orex_cache.json     # кэш Orex (бесплатные модели)
 ```
 
 ## Добавление нового провайдера
