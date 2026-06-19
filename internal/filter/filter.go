@@ -14,6 +14,7 @@ var logger = log.New(log.Writer(), "[filter] ", log.LstdFlags)
 type Engine struct {
 	SpamPattern        *regexp.Regexp
 	ExcludeDomains     map[string]bool
+	ExcludedProviders  map[string]bool
 	MinDescLength      int
 	RequireURL         bool
 	seenFingerprints   map[string]bool
@@ -30,6 +31,11 @@ func NewEngine() *Engine {
 			"medium.com":   true,
 			"substack.com": true,
 			"linkedin.com": true,
+		},
+		ExcludedProviders: map[string]bool{
+			"kilo gateway": true,
+			"kilochat":     true,
+			"kilo":         true,
 		},
 		MinDescLength: 30,
 		RequireURL:    false,
@@ -84,6 +90,18 @@ func (e *Engine) applyFilters(f *models.Finding) {
 			f.FilteredOut = true
 			f.FilterReason = "excluded_domain:" + domain
 			return
+		}
+	}
+
+	// 4a. Исключённые провайдеры
+	if f.ProviderName != nil {
+		nameLower := strings.ToLower(*f.ProviderName)
+		for excluded := range e.ExcludedProviders {
+			if strings.Contains(nameLower, excluded) {
+				f.FilteredOut = true
+				f.FilterReason = "excluded_provider:" + excluded
+				return
+			}
 		}
 	}
 

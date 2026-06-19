@@ -169,6 +169,25 @@ func TestAssignPriority(t *testing.T) {
 	}
 }
 
+func TestFilterExcludedProvider(t *testing.T) {
+	engine := NewEngine()
+
+	kilo := "Kilo Gateway"
+	f := models.Finding{
+		SourceID:    "test",
+		Title:       "Kilo Gateway free API",
+		URL:         "https://kilo.example.com",
+		Description: "A sufficiently long description that passes the minimum length filter check for testing",
+		RawText:     "Kilo Gateway offers free API access",
+		ProviderName: &kilo,
+	}
+
+	results := engine.FilterFindings([]models.Finding{f})
+	if len(results) != 0 {
+		t.Errorf("Expected 0 results for excluded provider, got %d", len(results))
+	}
+}
+
 func TestFilterMultipleUnique(t *testing.T) {
 	engine := NewEngine()
 

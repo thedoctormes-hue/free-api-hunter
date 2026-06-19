@@ -25,6 +25,11 @@ type Config struct {
 	Providers []ProviderConfig       `json:"provider_pages"`
 }
 
+// FilterConfig — конфигурация фильтров из filters.json
+type FilterConfig struct {
+	ExcludedProviders []string `json:"excluded_providers"`
+}
+
 // ProviderConfig — конфигурация страницы провайдера
 type ProviderConfig struct {
 	ID         string `json:"id"`
@@ -69,11 +74,20 @@ func main() {
 	logger.Println("Running scraper...")
 	rawFindings := scraper.RunScraper(sources)
 
-	// 3. Фильтруем мусор
+	// 3. Загружаем фильтры
+	filterConfig := loadFilterConfig("config/filters.json")
+
+	// 4. Фильтруем мусор
 	engine := filter.NewEngine()
+	if len(filterConfig.ExcludedProviders) > 0 {
+		engine.ExcludedProviders = make(map[string]bool)
+		for _, p := range filterConfig.ExcludedProviders {
+			engine.ExcludedProviders[strings.ToLower(p)] = true
+		}
+	}
 	findings := engine.FilterFindings(rawFindings)
 
-	// 4. Загружаем/верифицируем провайдеров
+	// 5. Загружаем/верифицируем провайдеров
 	providers := loadInitialProviders(config)
 	if *verify {
 		logger.Printf("Verifying %d providers...", len(providers))
@@ -90,10 +104,10 @@ func main() {
 		}
 	}
 
-	// 5. Выводим результаты
+	// 6. Выводим результаты
 	printResults(rawFindings, findings, providers, *limit)
 
-	// 6. Сохраняем (если не dry-run)
+	// 7. Сохраняем (если не dry-run)
 	if !*dryRun {
 		logger.Println("Saving results...")
 		if err := storage.SaveProviders(providers, ""); err != nil {
@@ -141,6 +155,20 @@ func loadConfig(path string) (*Config, error) {
 	return &config, nil
 }
 
+func loadFilterConfig(path string) FilterConfig {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		logger.Printf("Filter config not found (%v), using defaults", err)
+		return FilterConfig{}
+	}
+	var cfg FilterConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		logger.Printf("Failed to parse filter config (%v), using defaults", err)
+		return FilterConfig{}
+	}
+	return cfg
+}
+
 func loadInitialProviders(config *Config) []*models.Provider {
 	// Пробуем загрузить из файла
 	providers, err := storage.LoadProviders("")
@@ -176,7 +204,7 @@ func printResults(raw []models.Finding, filtered []models.Finding, providers []*
 	fmt.Println(strings.Repeat("=", 60))
 	fmt.Printf("Сырых находок: %d\n", len(raw))
 	fmt.Printf("После фильтра: %d\n", len(filtered))
-	fmt.Printf("Провайдеров: %d\n", len(providers))
+	fmt.Printf("Провайдеров в базе: %d\n", len(providers))
 	fmt.Println(strings.Repeat("-", 60))
 
 	// Топ находок
@@ -195,8 +223,8 @@ func printResults(raw []models.Finding, filtered []models.Finding, providers []*
 		fmt.Printf("   Источник: %s\n", f.SourceID)
 		fmt.Printf("   URL: %s\n", f.URL)
 		desc := f.Description
-		if len(desc) > 100 {
-			desc = desc[:100] + "..."
+		if len(desc) > 150 {
+			desc = desc[:150] + "..."
 		}
 		fmt.Printf("   Описание: %s\n", desc)
 		fmt.Println()
@@ -213,12 +241,23 @@ func printResults(raw []models.Finding, filtered []models.Finding, providers []*
 		return highPri[i].Name < highPri[j].Name
 	})
 
-	fmt.Printf("Подтверждённых бесплатных провайдеров: %d\n", len(highPri))
+	fmt.Printf("\nПодтверждённых бесплатных провайдеров: %d\n", len(highPri))
+	if len(highPri) == 0 {
+		fmt.Println("  Нет подтверждённых провайдеров.")
+	}
 	for _, p := range highPri {
-		model := "N/A"
+		modelsStr := "N/A"
 		if len(p.Models) > 0 {
-			model = p.Models[0]
+			modelsStr = strings.Join(p.Models, ", ")
 		}
-		fmt.Printf("  • %s (%s)\n", p.Name, model)
+		limitsStr := p.Limits
+		if limitsStr == "" {
+			limitsStr = "не указаны"
+		}
+		fmt.Printf("  • %s\n", p.Name)
+		fmt.Printf("    Модели: %s\n", modelsStr)
+		fmt.Printf("    Лимиты: %s\n", limitsStr)
+		fmt.Printf("    URL: %s\n", p.URL)
+		fmt.Println()
 	}
 }
