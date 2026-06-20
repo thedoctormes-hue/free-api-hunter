@@ -38,3 +38,5 @@ hunter_check.sh
 
 # Local data
 data/key_pool.json
+data/findings.json
+data/providers.json
