@@ -75,6 +75,9 @@ go build -o hunter ./cmd/hunter
 
 # Конкретный источник
 ./hunter --source hackernews
+
+# Orion Scan — ежедневная проверка бесплатных моделей OpenRouter
+./orion-scan.sh
 ```
 
 ## Статус провайдеров
