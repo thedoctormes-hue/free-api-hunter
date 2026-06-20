@@ -202,3 +202,115 @@ func TestFilterMultipleUnique(t *testing.T) {
 		t.Errorf("Expected 3 unique results, got %d", len(results))
 	}
 }
+
+func TestFilterExcludeKeywords(t *testing.T) {
+	engine := NewEngine()
+	engine.ExcludeKeywords = []string{"скидка", "affiliate"}
+
+	spamFinding := models.Finding{
+		SourceID:    "test",
+		Title:       "Get скидка on API",
+		URL:         "https://example.com",
+		Description: "A sufficiently long description that passes the minimum length filter check for testing",
+		RawText:     "Скидка на подписку! Успейте купить!",
+	}
+
+	cleanFinding := models.Finding{
+		SourceID:    "test2",
+		Title:       "Free API access",
+		URL:         "https://example2.com",
+		Description: "A sufficiently long description that passes the minimum length filter check for testing",
+		RawText:     "Free tier available",
+	}
+
+	results := engine.FilterFindings([]models.Finding{spamFinding, cleanFinding})
+	if len(results) != 1 {
+		t.Errorf("Expected 1 result after keyword filter, got %d", len(results))
+	}
+}
+
+func TestFilterTrashSources(t *testing.T) {
+	engine := NewEngine()
+	engine.ExcludeTrashSources = map[string]bool{"pastebin.com": true}
+
+	trashFinding := models.Finding{
+		SourceID:    "test",
+		Title:       "Pastebin API",
+		URL:         "https://pastebin.com/abc123",
+		Description: "A sufficiently long description that passes the minimum length filter check for testing",
+		RawText:     "Free API keys on pastebin",
+	}
+
+	results := engine.FilterFindings([]models.Finding{trashFinding})
+	if len(results) != 0 {
+		t.Errorf("Expected 0 results for trash source, got %d", len(results))
+	}
+}
+
+func TestFilterURLUniqueness(t *testing.T) {
+	engine := NewEngine()
+	engine.seenURLs = make(map[string]bool)
+
+	f1 := models.Finding{
+		SourceID:    "test1",
+		Title:       "Same URL",
+		URL:         "https://example.com/api",
+		Description: "First finding with this URL that is long enough to pass",
+		RawText:     "content",
+	}
+	f2 := models.Finding{
+		SourceID:    "test2",
+		Title:       "Same URL duplicate",
+		URL:         "https://example.com/api",
+		Description: "Second finding with same URL that is long enough to pass",
+		RawText:     "more content",
+	}
+
+	results := engine.FilterFindings([]models.Finding{f1, f2})
+	if len(results) != 1 {
+		t.Errorf("Expected 1 result after URL dedup, got %d", len(results))
+	}
+}
+
+func TestApplyConfig(t *testing.T) {
+	engine := NewEngine()
+
+	cfg := FilterConfigData{
+		ExcludedProviders: []string{"Bad Provider"},
+		SpamDomains:       []string{"facebook.com"},
+		SpamKeywords:      []string{"купить", "referral"},
+		TrashSources:      []string{"pastebin.com"},
+		MinDescLength:     50,
+		RequireURL:        true,
+		ExcludeExpired:    true,
+		MaxAgeDays:        30,
+		CheckURLUnique:    true,
+	}
+
+	engine.ApplyConfig(cfg)
+
+	if !engine.ExcludedProviders["bad provider"] {
+		t.Error("Expected 'bad provider' in ExcludedProviders")
+	}
+	if !engine.ExcludeDomains["facebook.com"] {
+		t.Error("Expected facebook.com in ExcludeDomains")
+	}
+	if engine.MinDescLength != 50 {
+		t.Errorf("Expected MinDescLength 50, got %d", engine.MinDescLength)
+	}
+	if !engine.RequireURL {
+		t.Error("Expected RequireURL true")
+	}
+	if !engine.ExcludeExpired {
+		t.Error("Expected ExcludeExpired true")
+	}
+	if engine.MaxAgeDays != 30 {
+		t.Errorf("Expected MaxAgeDays 30, got %d", engine.MaxAgeDays)
+	}
+	if engine.seenURLs == nil {
+		t.Error("Expected seenURLs initialized")
+	}
+	if len(engine.ExcludeKeywords) != 2 {
+		t.Errorf("Expected 2 exclude keywords, got %d", len(engine.ExcludeKeywords))
+	}
+}

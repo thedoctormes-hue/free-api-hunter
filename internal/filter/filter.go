@@ -4,6 +4,7 @@ import (
 	"log"
 	"regexp"
 	"strings"
+	"time"
 
 	"free-api-hunter/internal/models"
 )
@@ -15,9 +16,68 @@ type Engine struct {
 	SpamPattern        *regexp.Regexp
 	ExcludeDomains     map[string]bool
 	ExcludedProviders  map[string]bool
+	ExcludeKeywords    []string
+	ExcludeTrashSources map[string]bool
 	MinDescLength      int
 	RequireURL         bool
+	ExcludeExpired     bool
+	MaxAgeDays         int
 	seenFingerprints   map[string]bool
+	seenURLs           map[string]bool
+}
+
+// FilterConfigData — данные конфигурации фильтров для ApplyConfig
+type FilterConfigData struct {
+	ExcludedProviders  []string
+	SpamDomains        []string
+	SpamKeywords       []string
+	TrashSources       []string
+	MinDescLength      int
+	RequireURL         bool
+	ExcludeExpired     bool
+	MaxAgeDays         int
+	CheckURLUnique     bool
+}
+
+// ApplyConfig — применить конфигурацию из filters.json
+func (e *Engine) ApplyConfig(cfg FilterConfigData) {
+	if len(cfg.ExcludedProviders) > 0 {
+		e.ExcludedProviders = make(map[string]bool)
+		for _, p := range cfg.ExcludedProviders {
+			e.ExcludedProviders[strings.ToLower(p)] = true
+		}
+	}
+
+	for _, d := range cfg.SpamDomains {
+		e.ExcludeDomains[strings.ToLower(d)] = true
+	}
+
+	if len(cfg.SpamKeywords) > 0 {
+		e.ExcludeKeywords = cfg.SpamKeywords
+	}
+
+	if len(cfg.TrashSources) > 0 {
+		e.ExcludeTrashSources = make(map[string]bool)
+		for _, s := range cfg.TrashSources {
+			e.ExcludeTrashSources[strings.ToLower(s)] = true
+		}
+	}
+
+	if cfg.MinDescLength > 0 {
+		e.MinDescLength = cfg.MinDescLength
+	}
+	if cfg.RequireURL {
+		e.RequireURL = true
+	}
+	if cfg.ExcludeExpired {
+		e.ExcludeExpired = true
+	}
+	if cfg.MaxAgeDays > 0 {
+		e.MaxAgeDays = cfg.MaxAgeDays
+	}
+	if cfg.CheckURLUnique {
+		e.seenURLs = make(map[string]bool)
+	}
 }
 
 // NewEngine — создать фильтр с настройками по умолчанию
@@ -105,11 +165,53 @@ func (e *Engine) applyFilters(f *models.Finding) {
 		}
 	}
 
+	// 4b. Исключённые trash-источники (pastebin, ghostbin, etc.)
+	for source := range e.ExcludeTrashSources {
+		if strings.Contains(f.URL, source) {
+			f.FilteredOut = true
+			f.FilterReason = "trash_source:" + source
+			return
+		}
+	}
+
+	// 4c. URL uniqueness check
+	if e.seenURLs != nil {
+		if e.seenURLs[f.URL] {
+			f.FilteredOut = true
+			f.FilterReason = "duplicate_url"
+			return
+		}
+		e.seenURLs[f.URL] = true
+	}
+
 	// 5. Спам-паттерн
 	if e.SpamPattern.MatchString(f.RawText) {
 		f.FilteredOut = true
 		f.FilterReason = "spam_pattern"
 		return
+	}
+
+	// 5a. Exclude keywords (из filters.json spam_filters.exclude_keywords)
+	if len(e.ExcludeKeywords) > 0 {
+		textLower := strings.ToLower(f.RawText)
+		for _, kw := range e.ExcludeKeywords {
+			if strings.Contains(textLower, strings.ToLower(kw)) {
+				f.FilteredOut = true
+				f.FilterReason = "spam_keyword:" + kw
+				return
+			}
+		}
+	}
+
+	// 5b. Expired age check
+	if e.ExcludeExpired && e.MaxAgeDays > 0 && f.DiscoveredAt != "" {
+		if t, err := time.Parse(time.RFC3339, f.DiscoveredAt); err == nil {
+			if time.Since(t) > time.Duration(e.MaxAgeDays)*24*time.Hour {
+				f.FilteredOut = true
+				f.FilterReason = "expired_age"
+				return
+			}
+		}
 	}
 
 	// 6. Оценка качества

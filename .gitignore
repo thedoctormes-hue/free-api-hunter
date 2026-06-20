@@ -34,7 +34,9 @@ go.work.sum
 # Project-specific binaries
 hunter
 hunter_v2
-hunter_check.sh
+
+# Scripts (allowed in repo, but listed for clarity)
+# hunter_check.sh — нужен для ручной проверки ключей
 
 # Local data
 data/key_pool.json

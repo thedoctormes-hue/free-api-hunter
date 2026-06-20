@@ -19,6 +19,10 @@ import (
 
 var logger = log.New(os.Stderr, "[hunter] ", log.LstdFlags)
 
+// Version — устанавливается через ldflags при сборке
+// go build -ldflags "-X main.Version=$(git describe --tags --always)" -o hunter cmd/hunter/main.go
+var Version = "dev"
+
 // Config — загруженная конфигурация источников
 type Config struct {
 	Sources   []scraper.SourceConfig `json:"sources"`
@@ -27,7 +31,33 @@ type Config struct {
 
 // FilterConfig — конфигурация фильтров из filters.json
 type FilterConfig struct {
-	ExcludedProviders []string `json:"excluded_providers"`
+	ExcludedProviders []string          `json:"excluded_providers"`
+	SpamFilters       SpamFilterConfig  `json:"spam_filters"`
+	QualityThreshold  QualityConfig     `json:"quality_threshold"`
+	Dedup             DedupConfig       `json:"dedup"`
+}
+
+// SpamFilterConfig — спам-фильтры
+type SpamFilterConfig struct {
+	ExcludeDomains        []string `json:"exclude_domains"`
+	ExcludeKeywords       []string `json:"exclude_keywords"`
+	ExcludeCreditCard     bool     `json:"exclude_credit_card_required"`
+	ExcludeTrashSources   []string `json:"exclude_trash_sources"`
+}
+
+// QualityConfig — пороги качества
+type QualityConfig struct {
+	MinDescLength    int  `json:"min_description_length"`
+	RequireURL       bool `json:"require_url"`
+	ExcludeExpired   bool `json:"exclude_expired"`
+	MaxAgeDays       int  `json:"max_age_days"`
+}
+
+// DedupConfig — настройки дедупликации
+type DedupConfig struct {
+	Enabled           bool     `json:"enabled"`
+	TTLHours          int      `json:"ttl_hours"`
+	CheckURLUnique    bool     `json:"check_url_uniqueness"`
 }
 
 // ProviderConfig — конфигурация страницы провайдера
@@ -45,10 +75,16 @@ func main() {
 	verify := flag.Bool("verify", false, "Верифицировать провайдеров")
 	limit := flag.Int("limit", 10, "Лимит находок для вывода")
 	noAlerts := flag.Bool("no-alerts", false, "Не отправлять алерты в Telegram")
-	alertConfigPath := flag.String("alert-config", "config/alerter.json", "Путь к конфигу алертов")
+	alertConfigPath := flag.String("alert-config", "config/alerter.json", "Путь к конфигу алертеров")
+	showVersion := flag.Bool("version", false, "Показать версию и выйти")
 	flag.Parse()
 
-	logger.Println("Free API Hunter v0.1.0 starting...")
+	if *showVersion {
+		fmt.Printf("Free API Hunter %s\n", Version)
+		os.Exit(0)
+	}
+
+	logger.Printf("Free API Hunter %s starting...", Version)
 
 	// 1. Загружаем конфиг источников
 	config, err := loadConfig("config/sources.json")
@@ -79,12 +115,17 @@ func main() {
 
 	// 4. Фильтруем мусор
 	engine := filter.NewEngine()
-	if len(filterConfig.ExcludedProviders) > 0 {
-		engine.ExcludedProviders = make(map[string]bool)
-		for _, p := range filterConfig.ExcludedProviders {
-			engine.ExcludedProviders[strings.ToLower(p)] = true
-		}
-	}
+	engine.ApplyConfig(filter.FilterConfigData{
+		ExcludedProviders: filterConfig.ExcludedProviders,
+		SpamDomains:       filterConfig.SpamFilters.ExcludeDomains,
+		SpamKeywords:      filterConfig.SpamFilters.ExcludeKeywords,
+		TrashSources:      filterConfig.SpamFilters.ExcludeTrashSources,
+		MinDescLength:     filterConfig.QualityThreshold.MinDescLength,
+		RequireURL:        filterConfig.QualityThreshold.RequireURL,
+		ExcludeExpired:    filterConfig.QualityThreshold.ExcludeExpired,
+		MaxAgeDays:        filterConfig.QualityThreshold.MaxAgeDays,
+		CheckURLUnique:    filterConfig.Dedup.CheckURLUnique,
+	})
 	findings := engine.FilterFindings(rawFindings)
 
 	// 5. Загружаем/верифицируем провайдеров
