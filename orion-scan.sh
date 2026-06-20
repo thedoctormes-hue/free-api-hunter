@@ -118,7 +118,7 @@ if ok_models:
         mid, name, ctx, max_out = parts[0], parts[1], int(parts[2]), parts[3]
         reasoning = parts[4] if len(parts) > 4 else ''
         
-        r_str = '✅' if 'mandatory' in reasoning or 'default_enabled' in reasoning else '—'
+        r_str = '🧠' if 'mandatory' in reasoning or 'default_enabled' in reasoning else '—'
         out_str = f'{int(max_out)//1000:,}K' if max_out and int(max_out) > 0 else '?'
         
         entry = (mid, name, ctx, out_str, r_str)
