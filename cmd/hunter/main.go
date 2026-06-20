@@ -170,30 +170,75 @@ func loadFilterConfig(path string) FilterConfig {
 }
 
 func loadInitialProviders(config *Config) []*models.Provider {
-	// Пробуем загрузить из файла
-	providers, err := storage.LoadProviders("")
-	if err == nil && len(providers) > 0 {
-		logger.Printf("Loaded %d providers from data/providers.json", len(providers))
-		return providers
+	// 1. Загружаем config-провайдеров как baseline (source of truth для статусов)
+	configProviders := make(map[string]*models.Provider)
+	for _, p := range config.Providers {
+		status := models.ProviderStatus(p.Status)
+		if status == "" {
+			status = models.StatusClaimed
+		}
+		configProviders[p.Name] = &models.Provider{
+			Name:       p.Name,
+			URL:        p.URL,
+			APIKeyURL:  p.URL,
+			CreditCard: p.CreditCard,
+			Status:     status,
+		}
 	}
 
-	// Иначе из конфига
-	var result []*models.Provider
-	for _, p := range config.Providers {
-		status := models.StatusClaimed
-		if p.Status == "confirmed" {
-			status = models.StatusConfirmed
+	// 2. Пробуем загрузить runtime-данные из файла
+	runtimeProviders, err := storage.LoadProviders("")
+	if err != nil || len(runtimeProviders) == 0 {
+		// Нет runtime-данных — возвращаем config как есть
+		var result []*models.Provider
+		for _, p := range configProviders {
+			if p.DiscoveredAt == "" {
+				p.DiscoveredAt = models.Now()
+			}
+			result = append(result, p)
 		}
-		result = append(result, &models.Provider{
-			Name:         p.Name,
-			URL:          p.URL,
-			APIKeyURL:    p.URL,
-			CreditCard:   p.CreditCard,
-			Status:       status,
-			DiscoveredAt: models.Now(),
-		})
+		logger.Printf("Loaded %d providers from config (no runtime data)", len(result))
+		return result
 	}
-	logger.Printf("Loaded %d providers from initial config", len(result))
+
+	// 3. Мержим: runtime-данные (URL, модели, лимиты) + config-статусы
+	var result []*models.Provider
+	seen := make(map[string]bool)
+
+	for _, rp := range runtimeProviders {
+		seen[rp.Name] = true
+		if cp, ok := configProviders[rp.Name]; ok {
+			// Провайдер есть и в config, и в runtime
+			// Статус из config (source of truth), остальное из runtime
+			rp.Status = cp.Status
+			rp.CreditCard = cp.CreditCard
+			// URL из config как более актуальный, если runtime пустой
+			if rp.URL == "" {
+				rp.URL = cp.URL
+			}
+			if rp.APIKeyURL == "" {
+				rp.APIKeyURL = cp.URL
+			}
+		} else {
+			// Провайдер есть только в runtime (новый из Orex и т.д.)
+			// Оставляем как есть
+		}
+		result = append(result, rp)
+	}
+
+	// 4. Добавляем провайдеров из config, которых нет в runtime
+	for name, cp := range configProviders {
+		if !seen[name] {
+			if cp.DiscoveredAt == "" {
+				cp.DiscoveredAt = models.Now()
+			}
+			result = append(result, cp)
+		}
+	}
+
+	logger.Printf("Loaded %d providers (%d runtime + %d config-only, %d merged)",
+		len(result), len(runtimeProviders), len(result)-len(runtimeProviders),
+		len(runtimeProviders)+len(configProviders)-len(result))
 	return result
 }
 

@@ -11,18 +11,18 @@
       "type": "reddit",
       "name": "Reddit r/LocalLLaMA",
       "url": "free API credits giveaway",
-      "enabled": true,
+      "enabled": false,
       "priority": 1,
-      "notes": "Reddit блокирует без прокси. Использовать yandex.sh если 403."
+      "notes": "ОТКЛЮЧЕНО: Reddit блокирует без прокси (403/429). Для включения нужен residential proxy или OAuth."
     },
     {
       "id": "reddit_machinelearning",
       "type": "reddit",
       "name": "Reddit r/MachineLearning",
       "url": "free LLM API inference",
-      "enabled": true,
+      "enabled": false,
       "priority": 2,
-      "notes": "Тоже что и выше — прокси может понадобиться."
+      "notes": "ОТКЛЮЧЕНО: Reddit блокирует без прокси (403/429). Для включения нужен residential proxy или OAuth."
     },
     {
       "id": "hackernews",
@@ -80,7 +80,8 @@
       "status": "verified",
       "verified_by": "zavlab",
       "models_count": 27,
-      "limits": {"rpm": 20, "rpd": 200}
+      "limits": {"rpm": 20, "rpd": 50, "rpd_with_credits": 1000},
+      "limits_note": "50 req/day без кредитов, 1000 req/day при покупке от 10$ кредитов. Источник: openrouter.ai/docs/api/reference/limits (2026-06-20)"
     },
     {
       "id": "google_ai_studio",

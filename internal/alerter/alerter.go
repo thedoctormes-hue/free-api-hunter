@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,17 +22,51 @@ type TelegramConfig struct {
 	ChatID   string `json:"chat_id"`
 }
 
-// LoadConfig — загрузить конфиг алертов
+// vaultPath — путь к vault для Telegram credentials
+var vaultPath = "/root/LabDoctorM/vault/free-api-hunter"
+
+// LoadConfig — загрузить конфиг алертов.
+// Приоритет: vault > config file.
+// Если токен = "YOUR_*" — выводит warning и возвращает nil.
 func LoadConfig(path string) (*TelegramConfig, error) {
+	cfg := &TelegramConfig{}
+
+	// 1. Пробуем загрузить из vault
+	vaultTokenFile := filepath.Join(vaultPath, "telegram_bot_token.key")
+	vaultChatFile := filepath.Join(vaultPath, "telegram_chat_id.key")
+
+	token, tokenErr := os.ReadFile(vaultTokenFile)
+	chat, chatErr := os.ReadFile(vaultChatFile)
+
+	if tokenErr == nil && chatErr == nil {
+		cfg.BotToken = strings.TrimSpace(string(token))
+		cfg.ChatID = strings.TrimSpace(string(chat))
+		if cfg.BotToken != "" && cfg.ChatID != "" {
+			logger.Println("Telegram config loaded from vault")
+			return cfg, nil
+		}
+	}
+
+	// 2. Fallback: config file
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var cfg TelegramConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, err
 	}
-	return &cfg, nil
+
+	// 3. Проверяем на placeholder values
+	if strings.HasPrefix(cfg.BotToken, "YOUR_") || strings.HasPrefix(cfg.ChatID, "YOUR_") {
+		logger.Println("⚠️  TELEGRAM NOT CONFIGURED: bot_token or chat_id is a placeholder.")
+		logger.Println("   Create vault files or update config/alerter.json:")
+		logger.Printf("   echo 'YOUR_BOT_TOKEN' > %s", vaultTokenFile)
+		logger.Printf("   echo 'YOUR_CHAT_ID' > %s", vaultChatFile)
+		return nil, nil
+	}
+
+	logger.Println("Telegram config loaded from config file")
+	return cfg, nil
 }
 
 // SendTelegram — отправить сообщение в Telegram
