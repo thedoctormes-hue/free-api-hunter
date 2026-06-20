@@ -95,10 +95,9 @@ ok_models = '''${OK_MODELS}'''.strip()
 fail_models = '''${FAIL_MODELS}'''.strip()
 scan_date = '''${SCAN_DATE}'''
 
-print('🆓 Бесплатные модели OpenRouter — отчёт')
+print('🆓 Бесплатные модели OpenRouter')
 print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-print(f'📅 Дата: {scan_date}')
-print(f'📊 Всего найдено: $TOTAL | ✅ Работают: $OK_COUNT | ❌ Не работают: $FAIL_COUNT')
+print(f'📅 {scan_date} | Найдено: $TOTAL | ✅ Работают: $OK_COUNT')
 print()
 
 if ok_models:
@@ -154,19 +153,6 @@ if ok_models:
             print(f'  • {name}')
             print(f'    {mid}')
             print(f'    Контекст: {ctx:,} | Выход: {out_str} | Reasoning: {r_str}')
-
-if fail_models:
-    print()
-    print('❌ НЕ РАБОТАЮТ:')
-    print('──────────────────────────────────────')
-    for line in fail_models.split('\n'):
-        if not line.strip():
-            continue
-        parts = line.split('|')
-        if len(parts) < 3:
-            continue
-        mid, name, err = parts[0], parts[1], parts[2]
-        print(f'  • {name} — {err}')
 
 print()
 print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
