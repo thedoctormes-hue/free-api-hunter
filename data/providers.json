@@ -1,9 +1,8 @@
 {
   "_meta": {
-    "version": "0.4.0",
-    "updated": "2026-06-18T09:45:00Z",
-    "updated_by": "raven+synced",
-    "description": "База верифицированных LLM API провайдеров. Статусы: verified=ЗавЛаб проверил, confirmed=работает по данным сканера, claimed=найден но не проверен, deprioritized=низкий приоритет, expired=не работает"
+    "version": "0.1.0",
+    "updated": "2026-06-21T00:00:33Z",
+    "count": 17
   },
   "providers": [
     {
@@ -11,7 +10,7 @@
       "url": "https://openrouter.ai/keys",
       "api_key_url": "https://openrouter.ai/keys",
       "credit_card": false,
-      "status": "verified",
+      "status": "claimed",
       "models": [
         "deepseek/deepseek-r1:free",
         "qwen/qwen3-8b:free",
@@ -29,14 +28,14 @@
       "source": "zavlab_verified",
       "priority": 1,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-18T09:45:00Z"
+      "last_verified": "2026-06-21T00:00:13Z"
     },
     {
       "name": "Groq",
       "url": "https://console.groq.com/keys",
       "api_key_url": "https://console.groq.com/keys",
       "credit_card": false,
-      "status": "verified",
+      "status": "claimed",
       "models": [
         "openai/gpt-oss-20b",
         "openai/gpt-oss-120b",
@@ -49,14 +48,14 @@
       "source": "zavlab_verified",
       "priority": 1,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-18T09:45:00Z"
+      "last_verified": "2026-06-21T00:00:14Z"
     },
     {
       "name": "Cloudflare Workers AI",
       "url": "https://developers.cloudflare.com/workers-ai/",
       "api_key_url": "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run",
       "credit_card": false,
-      "status": "verified",
+      "status": "claimed",
       "models": [
         "@cf/meta/llama-3.3-70b",
         "@cf/meta/llama-4-scout",
@@ -68,21 +67,21 @@
       "source": "zavlab_verified",
       "priority": 1,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-18T09:45:00Z"
+      "last_verified": "2026-06-21T00:00:15Z"
     },
     {
       "name": "Manus",
       "url": "https://manus.im/",
       "api_key_url": "https://api.manus.ai/v2",
       "credit_card": false,
-      "status": "verified",
+      "status": "claimed",
       "models": [],
       "limits": "Unknown",
       "notes": "ЗавЛаб проверил — РАБОТАЕТ. Ключ активен.",
       "source": "zavlab_verified",
       "priority": 1,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-18T09:45:00Z"
+      "last_verified": "2026-06-21T00:00:15Z"
     },
     {
       "name": "Cohere",
@@ -91,41 +90,46 @@
       "credit_card": false,
       "status": "verified",
       "models": [
-        "command-r-plus-08-2024",
         "command-a-plus-05-2026",
+        "command-a-reasoning-08-2025",
         "command-a-03-2025",
-        "c4ai-aya-expanse-32b",
-        "c4ai-aya-vision-32b"
+        "command-a-vision-07-2025",
+        "command-r-plus-08-2024",
+        "command-r-08-2024",
+        "command-r7b-12-2024",
+        "c4ai-aya-expanse-32b"
       ],
-      "limits": "1000 calls/month (free tier)",
+      "limits": "1000 calls/month per key, 4 keys = 4000/month",
       "notes": "ЗавЛаб проверил — ПОЛНОСТЬЮ ПРОВЕРЕН. Ключ активен.",
       "source": "zavlab_verified",
       "priority": 1,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-18T09:45:00Z"
+      "last_verified": "2026-06-21T00:00:16Z"
     },
     {
       "name": "Google AI Studio (Gemini)",
       "url": "https://aistudio.google.com/apikey",
       "api_key_url": "https://aistudio.google.com/apikey",
       "credit_card": false,
-      "status": "verified",
-      "models": ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
+      "status": "claimed",
+      "models": [
+        "gemini-2.0-flash",
+        "gemini-2.5-flash",
+        "gemini-2.5-pro"
+      ],
       "limits": "1500 RPM, 1500 RPD, 1M TPM",
-      "context": 1000000,
       "notes": "ЗавЛаб проверил — ключ валидный, 50 моделей, context 1M. Бесплатная квота исчерпана (429). ToS: business use only. Blocked in EU/UK/CH.",
-      "warning": "rate_limited",
       "source": "zavlab_verified",
       "priority": 2,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-18T09:45:00Z"
+      "last_verified": "2026-06-21T00:00:17Z"
     },
     {
       "name": "Cerebras",
       "url": "https://cloud.cerebras.ai",
       "api_key_url": "https://cloud.cerebras.ai",
       "credit_card": false,
-      "status": "verified",
+      "status": "claimed",
       "models": [
         "gpt-oss-120b",
         "zai-glm-4.7"
@@ -135,14 +139,14 @@
       "source": "zavlab_verified",
       "priority": 1,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-18T09:45:00Z"
+      "last_verified": "2026-06-21T00:00:18Z"
     },
     {
       "name": "Mistral",
       "url": "https://console.mistral.ai",
       "api_key_url": "https://console.mistral.ai",
       "credit_card": false,
-      "status": "verified",
+      "status": "expired",
       "models": [
         "mistral-small-latest",
         "mistral-large-latest",
@@ -154,14 +158,14 @@
       "source": "zavlab_verified",
       "priority": 1,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-18T09:45:00Z"
+      "last_verified": "2026-06-21T00:00:18Z"
     },
     {
       "name": "Z.ai (GLM)",
       "url": "https://z.ai/",
       "api_key_url": "https://z.ai/manage-apikey/apikey-list",
       "credit_card": false,
-      "status": "confirmed",
+      "status": "claimed",
       "models": [
         "glm-4.7-flash",
         "glm-4.5-flash",
@@ -177,21 +181,21 @@
       "source": "zavlab_key_obtained",
       "priority": 1,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-18T09:45:00Z"
+      "last_verified": "2026-06-21T00:00:21Z"
     },
     {
       "name": "GitHub Models",
       "url": "https://github.com/marketplace/models",
       "api_key_url": "https://github.com/marketplace/models",
       "credit_card": false,
-      "status": "confirmed",
+      "status": "claimed",
       "models": null,
       "limits": "Unknown",
       "notes": "Нужен GitHub аккаунт. Бесплатный тир ограничен.",
       "source": "scanner",
       "priority": 2,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-18T09:42:50Z"
+      "last_verified": "2026-06-21T00:00:23Z"
     },
     {
       "name": "Kilo Gateway",
@@ -205,92 +209,100 @@
       "source": "scanner",
       "priority": 2,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-18T09:42:50Z"
+      "last_verified": "2026-06-21T00:00:29Z"
     },
     {
       "name": "Pollinations",
       "url": "https://pollinations.ai/",
       "api_key_url": "https://pollinations.ai/",
       "credit_card": false,
-      "status": "confirmed",
-      "models": ["gpt-oss-20b"],
+      "status": "claimed",
+      "models": [
+        "gpt-oss-20b"
+      ],
       "limits": "Unknown",
       "notes": "Анонимный доступ, GPT-OSS 20B.",
       "source": "scanner",
       "priority": 2,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-18T09:42:52Z"
+      "last_verified": "2026-06-21T00:00:30Z"
     },
     {
       "name": "OVH AI Endpoints",
       "url": "https://www.ovhcloud.com/en-ai/",
       "api_key_url": "https://www.ovhcloud.com/en-ai/",
       "credit_card": false,
-      "status": "confirmed",
-      "models": ["qwen3.5-397b"],
+      "status": "expired",
+      "models": [
+        "qwen3.5-397b"
+      ],
       "limits": "Unknown",
       "notes": "Анонимный доступ, Qwen3.5 397B.",
       "source": "scanner",
       "priority": 2,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-18T09:42:52Z"
+      "last_verified": "2026-06-21T00:00:30Z"
     },
     {
       "name": "OpenCode Zen",
       "url": "https://opencode.ai/",
       "api_key_url": "https://opencode.ai/",
       "credit_card": false,
-      "status": "confirmed",
-      "models": ["deepseek-v4-flash", "nemotron"],
+      "status": "claimed",
+      "models": [
+        "deepseek-v4-flash",
+        "nemotron"
+      ],
       "limits": "Unknown",
       "notes": "DeepSeek V4 Flash, Nemotron промо.",
       "source": "scanner",
       "priority": 2,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-18T09:42:52Z"
+      "last_verified": "2026-06-21T00:00:30Z"
     },
     {
       "name": "NVIDIA NIM",
       "url": "https://build.nvidia.com/",
       "api_key_url": "https://build.nvidia.com/",
       "credit_card": false,
-      "status": "deprioritized",
+      "status": "claimed",
       "models": null,
       "limits": "40 RPM",
-      "context": 262000,
       "notes": "ЗавЛаб решил — в конец очереди. ToS: evaluation only, not production. 40 RPM жёсткий лимит.",
       "source": "zavlab_deprioritized",
       "priority": 5,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-18T09:42:46Z"
+      "last_verified": "2026-06-21T00:00:31Z"
     },
     {
       "name": "Hugging Face Inference API",
       "url": "https://huggingface.co/settings/tokens",
       "api_key_url": "https://huggingface.co/settings/tokens",
       "credit_card": false,
-      "status": "deprioritized",
+      "status": "expired",
       "models": null,
       "limits": "Unknown",
       "notes": "ЗавЛаб решил — в конец очереди. Бесплатный тир урезан, реально полезно только с Pro ($9/мес). Баланс ~10¢.",
       "source": "zavlab_deprioritized",
       "priority": 5,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-18T09:42:48Z"
+      "last_verified": "2026-06-21T00:00:32Z"
     },
     {
       "name": "Together AI",
       "url": "https://api.together.ai/",
       "api_key_url": "https://api.together.ai/",
       "credit_card": false,
-      "status": "deprioritized",
-      "models": ["servicenow/apriel-1.6-15b-thinker"],
+      "status": "claimed",
+      "models": [
+        "servicenow/apriel-1.6-15b-thinker"
+      ],
       "limits": "Research preview only",
       "notes": "ЗавЛаб решил — в конец очереди. Бесплатный тир — только Apriel (research preview). Полный каталог от $5 депозита. Не копия OpenRouter — свой inference-хостинг open-source моделей.",
       "source": "zavlab_deprioritized",
       "priority": 5,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-18T09:42:49Z"
+      "last_verified": "2026-06-21T00:00:32Z"
     }
   ]
 }

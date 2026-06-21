@@ -80,7 +80,11 @@
       "status": "verified",
       "verified_by": "zavlab",
       "models_count": 27,
-      "limits": {"rpm": 20, "rpd": 50, "rpd_with_credits": 1000},
+      "limits": {
+        "rpm": 20,
+        "rpd": 50,
+        "rpd_with_credits": 1000
+      },
       "limits_note": "50 req/day без кредитов, 1000 req/day при покупке от 10$ кредитов. Источник: openrouter.ai/docs/api/reference/limits (2026-06-20)"
     },
     {
@@ -91,7 +95,11 @@
       "credit_card": false,
       "status": "verified",
       "verified_by": "zavlab",
-      "limits": {"rpm": 1500, "rpd": 1500, "tpm": 1000000},
+      "limits": {
+        "rpm": 1500,
+        "rpd": 1500,
+        "tpm": 1000000
+      },
       "context": 1000000,
       "warning": "Квота исчерпана (429). ToS: business use only. Blocked in EU/UK/CH."
     },
@@ -103,8 +111,14 @@
       "credit_card": false,
       "status": "verified",
       "verified_by": "zavlab",
-      "limits": {"rpm": 30},
-      "models": ["openai/gpt-oss-20b", "llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
+      "limits": {
+        "rpm": 30
+      },
+      "models": [
+        "openai/gpt-oss-20b",
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant"
+      ],
       "rate_limit": "14400 req/day, 6000 tokens/min"
     },
     {
@@ -115,8 +129,13 @@
       "credit_card": false,
       "status": "verified",
       "verified_by": "zavlab",
-      "limits": {"tps": 2600},
-      "models": ["gpt-oss-120b", "zai-glm-4.7"],
+      "limits": {
+        "tps": 2600
+      },
+      "models": [
+        "gpt-oss-120b",
+        "zai-glm-4.7"
+      ],
       "rate_limit": "5 RPM / 30K tokens/min"
     },
     {
@@ -127,8 +146,16 @@
       "credit_card": false,
       "status": "verified",
       "verified_by": "zavlab",
-      "limits": {"rps": 1, "tpm": 500000},
-      "models": ["mistral-small-latest", "mistral-large-latest", "open-mistral-nemo", "codestral-latest"],
+      "limits": {
+        "rps": 1,
+        "tpm": 500000
+      },
+      "models": [
+        "mistral-small-latest",
+        "mistral-large-latest",
+        "open-mistral-nemo",
+        "codestral-latest"
+      ],
       "rate_limit": "50 RPM / 500K tokens/min"
     },
     {
@@ -167,7 +194,9 @@
       "docs_url": "https://docs.nvidia.com/nim/",
       "credit_card": false,
       "status": "deprioritized",
-      "limits": {"rpm": 40},
+      "limits": {
+        "rpm": 40
+      },
       "context": 262000,
       "warning": "ToS: evaluation only, not production. 40 RPM жёсткий лимит."
     },
