@@ -43,3 +43,6 @@ hunter_check.sh
 data/key_pool.json
 data/findings.json
 data/providers.json
+
+# Node
+node_modules/
