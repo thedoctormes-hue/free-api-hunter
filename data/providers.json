@@ -1,7 +1,7 @@
 {
   "_meta": {
     "version": "0.1.0",
-    "updated": "2026-06-21T12:00:19Z",
+    "updated": "2026-06-21T18:00:25Z",
     "count": 17
   },
   "providers": [
@@ -28,7 +28,7 @@
       "source": "zavlab_verified",
       "priority": 1,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-21T12:00:04Z"
+      "last_verified": "2026-06-21T18:00:06Z"
     },
     {
       "name": "Groq",
@@ -48,7 +48,7 @@
       "source": "zavlab_verified",
       "priority": 1,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-21T12:00:05Z"
+      "last_verified": "2026-06-21T18:00:07Z"
     },
     {
       "name": "Cloudflare Workers AI",
@@ -67,7 +67,7 @@
       "source": "zavlab_verified",
       "priority": 1,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-21T12:00:06Z"
+      "last_verified": "2026-06-21T18:00:08Z"
     },
     {
       "name": "Manus",
@@ -81,7 +81,7 @@
       "source": "zavlab_verified",
       "priority": 1,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-21T12:00:06Z"
+      "last_verified": "2026-06-21T18:00:08Z"
     },
     {
       "name": "Cohere",
@@ -104,7 +104,7 @@
       "source": "zavlab_verified",
       "priority": 1,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-21T12:00:07Z"
+      "last_verified": "2026-06-21T18:00:08Z"
     },
     {
       "name": "Google AI Studio (Gemini)",
@@ -122,7 +122,7 @@
       "source": "zavlab_verified",
       "priority": 2,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-21T12:00:08Z"
+      "last_verified": "2026-06-21T18:00:10Z"
     },
     {
       "name": "Cerebras",
@@ -139,7 +139,7 @@
       "source": "zavlab_verified",
       "priority": 1,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-21T12:00:09Z"
+      "last_verified": "2026-06-21T18:00:11Z"
     },
     {
       "name": "Mistral",
@@ -158,7 +158,7 @@
       "source": "zavlab_verified",
       "priority": 1,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-21T12:00:09Z"
+      "last_verified": "2026-06-21T18:00:11Z"
     },
     {
       "name": "Z.ai (GLM)",
@@ -181,7 +181,7 @@
       "source": "zavlab_key_obtained",
       "priority": 1,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-21T12:00:12Z"
+      "last_verified": "2026-06-21T18:00:18Z"
     },
     {
       "name": "GitHub Models",
@@ -195,7 +195,7 @@
       "source": "scanner",
       "priority": 2,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-21T12:00:14Z"
+      "last_verified": "2026-06-21T18:00:21Z"
     },
     {
       "name": "Kilo Gateway",
@@ -209,7 +209,7 @@
       "source": "scanner",
       "priority": 2,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-21T12:00:14Z"
+      "last_verified": "2026-06-21T18:00:21Z"
     },
     {
       "name": "Pollinations",
@@ -225,7 +225,7 @@
       "source": "scanner",
       "priority": 2,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-21T12:00:16Z"
+      "last_verified": "2026-06-21T18:00:22Z"
     },
     {
       "name": "OVH AI Endpoints",
@@ -241,7 +241,7 @@
       "source": "scanner",
       "priority": 2,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-21T12:00:16Z"
+      "last_verified": "2026-06-21T18:00:22Z"
     },
     {
       "name": "OpenCode Zen",
@@ -258,7 +258,7 @@
       "source": "scanner",
       "priority": 2,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-21T12:00:16Z"
+      "last_verified": "2026-06-21T18:00:23Z"
     },
     {
       "name": "NVIDIA NIM",
@@ -272,7 +272,7 @@
       "source": "zavlab_deprioritized",
       "priority": 5,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-21T12:00:17Z"
+      "last_verified": "2026-06-21T18:00:23Z"
     },
     {
       "name": "Hugging Face Inference API",
@@ -286,7 +286,7 @@
       "source": "zavlab_deprioritized",
       "priority": 5,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-21T12:00:17Z"
+      "last_verified": "2026-06-21T18:00:24Z"
     },
     {
       "name": "Together AI",
@@ -302,7 +302,7 @@
       "source": "zavlab_deprioritized",
       "priority": 5,
       "discovered_at": "2026-06-18T08:40:41Z",
-      "last_verified": "2026-06-21T12:00:17Z"
+      "last_verified": "2026-06-21T18:00:24Z"
     }
   ]
 }
