@@ -1,0 +1,10 @@
+{
+  "antcat":         { "name": "Муравей",       "email": "antcat@labdoctorm.ru" },
+  "bestia":         { "name": "Бестия",        "email": "bestia@labdoctorm.ru" },
+  "dominika":       { "name": "Доминика",      "email": "dominika@labdoctorm.ru" },
+  "kotolizator":    { "name": "КотОлизатор",   "email": "kotolizator@labdoctorm.ru" },
+  "mangust":        { "name": "Мангуст",       "email": "mangust@labdoctorm.ru" },
+  "owl":            { "name": "Сова",          "email": "owl@labdoctorm.ru" },
+  "raven":          { "name": "Ворон",         "email": "raven@labdoctorm.ru" },
+  "streikbrecher":  { "name": "Штрейкбрехер",  "email": "streikbrecher@labdoctorm.ru" }
+}
