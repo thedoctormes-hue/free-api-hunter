@@ -4,131 +4,144 @@
 Находит халяву, фильтрует мусор, приносит профит.
 
 **Разработка:** Штрейкбрехер (Go) + Ворон (рекон/аналитика)
+**Версия:** v0.6.0
 
 ## Что делает
 
-- Сканирует источники: Reddit, GitHub awesome-листы, Hacker News, официальные страницы провайдеров
-- Фильтрует мусор: дедупликация, порог полезности, spam-фильтр, changelog-фильтр
+- Сканирует источники: GitHub awesome-листы, Hacker News, официальные страницы провайдеров
+- Фильтрует мусор: дедупликация (fingerprint + URL), спам-ключевые слова, trash-источники, порог качества, возраст находок
 - Верифицирует провайдеров: проверяет работоспособность ссылок и наличие бесплатного тира
 - Хранит базу провайдеров и пул рабочих ключей в JSON
-- Алерты в Telegram при новых находках (планируется)
+- Алерты в Telegram через vault-конфигурацию
+- Мерж статусов: config (source of truth) + runtime data
 
 ## Технологии
 
-- **Язык:** Go
-- **Хранение:** JSON-файлы (SQLite в планах)
-- **Планировщик:** systemd timers / cron
-- **Алерты:** Telegram Bot API
-- **Прокси:** yandex.sh для обхода блокировок
+- **Язык:** Go 1.23 (stdlib only, 0 внешних зависимостей)
+- **Хранение:** JSON-файлы + lab-vault для секретов
+- **Планировщик:** cron (crontab.txt)
+- **Алерты:** Telegram Bot API (конфиг через vault)
+- **Vault:** lab-vault (`/root/LabDoctorM/vault/free-api-hunter/`)
 
 ## Структура
 
 ```
 projects/
 ├── README.md                    # этот файл
-├── go.mod                       # Go модуль
-├── hunter                       # собранный бинарник
+├── DOCUMENTATION.md             # полная документация
+├── go.mod / go.sum              # Go модуль
+├── bin/hunter                   # собранный бинарник
 ├── config/
-│   ├── sources.json             # источники для сканирования (v0.3.0)
-│   └── filters.json             # настройки фильтрации
+│   ├── sources.json             # источники + провайдеры (source of truth)
+│   ├── filters.json             # фильтры (keywords, domains, thresholds)
+│   ├── alerter.json             # Telegram config (fallback)
+│   └── crontab.txt              # cron-задачи
 ├── data/
-│   ├── providers.json           # база провайдеров (v0.4.0, 17 провайдеров)
-│   ├── findings.json            # находки после фильтрации (генерируется)
-│   └── key_pool.json            # пул рабочих ключей (генерируется)
+│   ├── providers.json           # база провайдеров (runtime cache)
+│   ├── findings.json            # находки после фильтрации
+│   └── key_pool.json            # пул рабочих ключей
 ├── cmd/hunter/
-│   └── main.go                  # точка входа, CLI
+│   └── main.go                  # точка входа, CLI, оркестрация
 └── internal/
-    ├── models/
-    │   ├── models.go            # Provider, Finding, APIKey, Priority, Status
-    │   └── models_test.go       # тесты моделей
-    ├── scraper/
-    │   ├── scraper.go           # сбор данных (Reddit, GitHub, HN, web)
-    │   └── scraper_test.go      # тесты скрапера
-    ├── filter/
-    │   ├── filter.go            # фильтрация, дедуп, скоринг
-    │   └── filter_test.go       # тесты фильтра
-    ├── verifier/
-    │   ├── verifier.go          # верификация провайдеров
-    │   └── verifier_test.go     # тесты верификатора
-    ├── storage/
-    │   ├── storage.go           # хранение в JSON
-    │   └── storage_test.go      # тесты хранилища
-    └── vault/
-        ├── vault.go             # интеграция с lab-vault
-        └── vault_test.go        # тесты vault
+    ├── models/                  # Provider, Finding, APIKey, Priority, Status
+    ├── scraper/                 # сбор данных (GitHub, HN, web)
+    ├── filter/                  # фильтрация, дедуп, скоринг
+    ├── verifier/                # верификация провайдеров
+    ├── storage/                 # хранение в JSON
+    ├── vault/                   # интеграция с lab-vault
+    ├── alerter/                 # Telegram алерты (vault-first)
+    └── orex/                    # Orex integration (OpenRouter Expert)
 ```
 
 ## Запуск
 
 ```bash
-# Сборка
-go build -o hunter ./cmd/hunter
+# Сборка с версионированием
+go build -ldflags "-X main.Version=$(git describe --tags --always)" -o bin/hunter cmd/hunter/main.go
+
+# Версия
+./bin/hunter --version
 
 # Сухой прогон (без сохранения)
-./hunter --dry-run
+./bin/hunter --dry-run
 
 # Полный цикл
-./hunter
+./bin/hunter
 
 # С верификацией
-./hunter --verify
+./bin/hunter --verify
 
 # Конкретный источник
-./hunter --source hackernews
+./bin/hunter --source hackernews
+
+# Без алертов
+./bin/hunter --no-alerts
 
 # Orion Scan — ежедневная проверка бесплатных моделей OpenRouter
 ./orion-scan.sh
 ```
 
+## CLI Flags
+
+| Flag | Default | Описание |
+|------|---------|----------|
+| `--dry-run` | false | Не сохранять результаты |
+| `--source` | "" | Сканировать только конкретный источник |
+| `--verify` | false | Верифицировать провайдеров |
+| `--limit` | 10 | Лимит находок для вывода |
+| `--no-alerts` | false | Не отправлять алерты в Telegram |
+| `--alert-config` | config/alerter.json | Путь к конфигу алертов |
+| `--version` | false | Показать версию и выйти |
+
 ## Статус провайдеров
 
 | Статус | Значение | Кол-во |
 |--------|----------|--------|
-| verified | ЗавЛаб лично проверил | 8 |
-| confirmed | Подтверждён сканером | 6 |
-| deprioritized | Низкий приоритет | 3 |
+| verified | ЗавЛаб лично проверил | 1 |
+| confirmed | Подтверждён сканером | 1 |
+| claimed | Найден, не проверен | 12 |
+| expired | Не работает | 3 |
 
-### Верифицированные (✅ работают)
+### Активные провайдеры (14)
 
-- **OpenRouter** — 27 бесплатных моделей, 200 req/day
-- **Groq** — 5 моделей, 14400 req/day
-- **Cloudflare Workers AI** — edge inference, 10K neurons/day
-- **Manus** — ключ активен
-- **Cohere** — 1000 calls/month
-- **Google AI Studio** — ключ валидный, квота исчерпана
-- **Cerebras** — 5 RPM / 30K tokens/min
-- **Mistral** — 50 RPM / 500K tokens/min
+| Провайдер | Модели | Лимиты | Статус |
+|-----------|--------|--------|--------|
+| OpenRouter | 10 бесплатных | 50 req/day (без кредитов), 20 RPM | claimed |
+| Groq | 5 моделей | 14400 req/day, 30 RPM | claimed |
+| Cloudflare Workers AI | 4 модели | 10K neurons/day | claimed |
+| Cohere | 20 моделей | 1000 calls/month | claimed |
+| Google AI Studio (Gemini) | 3+ модели | 1500 RPM, 1500 RPD, 1M TPM | claimed |
+| Cerebras | 2 модели | 5 RPM / 30K tokens/min | claimed |
+| Z.ai (GLM) | 8 моделей | 1000 req/day, 3 RPM | claimed |
+| GitHub Models | — | — | claimed |
+| Kilo Gateway | — | — | confirmed |
+| Pollinations | — | — | claimed |
+| OpenCode Zen | — | — | claimed |
+| NVIDIA NIM | — | — | claimed |
+| Together AI | — | — | claimed |
+| Manus | — | — | claimed |
 
-### Подтверждённые сканером
+### Истёкшие (3)
 
-- **Z.ai (GLM)** — 3 бесплатные Flash-модели, 1000 req/day
-- **GitHub Models** — нужен GitHub аккаунт
-- **Kilo Gateway** — анонимный доступ
-- **Pollinations** — GPT-OSS 20B
-- **OVH AI Endpoints** — Qwen3.5 397B
-- **OpenCode Zen** — DeepSeek V4 Flash
-
-### Деприоритизированные
-
-- **NVIDIA NIM** — ToS: evaluation only
-- **HuggingFace** — бесплатный тир урезан
-- **Together AI** — только Apriel бесплатно
+| Провайдер | Причина |
+|-----------|---------|
+| Mistral | Ключ истёк |
+| OVH AI Endpoints | Сервис закрыт |
+| HuggingFace Inference API | Бесплатный тир урезан |
 
 ## Источники сканирования
 
 | Источник | Тип | Статус | Находки |
 |----------|-----|--------|---------|
-| Reddit r/LocalLLaMA | reddit | ⚠️ 403 | — |
-| Reddit r/MachineLearning | reddit | ⚠️ 403 | — |
 | Hacker News | hackernews | ✅ | 7 |
 | awesome-free-llm-apis | github_raw | ✅ | 42 |
 | free-llm-api-keys | github_raw | ✅ | 77 |
 | CostGoat OpenRouter | web_page | ✅ | 2 |
 | GetAIPerks Blog | web_page | ✅ | 2 |
+| Reddit r/LocalLLaMA | reddit | ❌ Отключён (403) | — |
+| Reddit r/MachineLearning | reddit | ❌ Отключён (403) | — |
 
-**Reddit 403:** Reddit блокирует без User-Agent/прокси. Решения:
-1. Использовать `HTTP_PROXY` (yandex.sh)
-2. Reddit OAuth (в планах)
+**Reddit 403:** Reddit блокирует скрейперы без прокси. Решения: HTTP_PROXY или Reddit OAuth.
 
 ## Модель данных
 
@@ -152,60 +165,86 @@ PriorityLow  (3)  — deprioritized/unverified
 PrioritySkip (9)  — credit card required, пропускать
 ```
 
-## Orex Integration
+## Фильтрация
 
-Orex (OpenRouter Expert) — внешний сервис `http://127.0.0.1:8710`, предоставляющий каталог моделей, цены и алерты.
+Все настройки фильтрации в `config/filters.json`:
 
-### Использование
+- **Дедупликация:** fingerprint + URL uniqueness
+- **Спам-фильтры:** ключевые слова, исключённые домены, trash-источники
+- **Пороги качества:** мин. длина описания, требование URL, макс. возраст
+- **Исключённые провайдеры:** kilo gateway, kilochat, kilo
+- **Скоринг:** по длине описания, упоминанию моделей, лимитов, URL документации
+
+## Хранение ключей
+
+Ключи хранятся в **lab-vault**: `/root/LabDoctorM/vault/free-api-hunter/`
+
+```
+vault/free-api-hunter/
+├── cohere/
+│   ├── api.key
+│   ├── api.key.2
+│   ├── api.key.3
+│   └── api.key.4
+└── telegram_bot_token.key    (не настроен)
+```
+
+**Принципы:**
+- Ключи НЕ хранятся в коде
+- Ключи НЕ коммитятся в git
+- Права 600 на файлах
+- Alerter загружает из vault-first, fallback на config/alerter.json
+
+## Добавление нового провайдера
+
+1. Создать директорию в vault: `mkdir -p /root/LabDoctorM/vault/free-api-hunter/{provider}`
+2. Записать ключ: `echo -n "API_KEY" > /root/LabDoctorM/vault/free-api-hunter/{provider}/api.key`
+3. Установить права: `chmod 600 /root/LabDoctorM/vault/free-api-hunter/{provider}/api.key`
+4. Добавить провайдера в `config/sources.json`
+5. Запустить верификацию: `./bin/hunter --verify`
+
+## Cron-задачи
 
 ```bash
-# Синхронизация с Orex перед сканированием
-./hunter --orex-sync
+# Полный скан с верификацией каждые 6 часов
+0 */6 * * * cd /root/LabDoctorM/projects/free-api-hunter && ./bin/hunter --verify --no-alerts >> /var/log/free-api-hunter/scan.log 2>&1
 
-# Полный цикл с Orex + верификация
-./hunter --orex-sync --verify
+# Ежедневный dry-run для алерта (08:00 UTC)
+0 8 * * * cd /root/LabDoctorM/projects/free-api-hunter && ./bin/hunter --dry-run >> /var/log/free-api-hunter/report.log 2>&1
+
+# Быстрый скан без верификации каждые 3 часа
+0 */3 * * * cd /root/LabDoctorM/projects/free-api-hunter && ./bin/hunter --no-alerts >> /var/log/free-api-hunter/quick-scan.log 2>&1
 ```
 
-### Что делает --orex-sync
+## Тестирование
 
-1. Вызывает `Orex.Sync()` — обновляет базу моделей
-2. Загружает бесплатные модели (`Orex.GetFreeModels()`)
-3. Сохраняет кэш в `data/orex_cache.json`
-4. Объединяет данные с локальными провайдерами (`MergeOrexProviders`)
-5. Отправляет алерт о новых моделях (если настроен Telegram)
+```bash
+# Все тесты
+go test ./... -count=1
 
-### Быстрая верификация
+# С покрытием
+go test ./... -cover
 
-Если Orex подтверждает что модель бесплатная (`pricing.prompt=0, pricing.completion=0`), верификатор пропускает тяжёлый HTML-парсинг страницы провайдера и сразу ставит статус `confirmed`.
-
-### Структура данных
-
-```
-data/
-├── providers.json      # локальные провайдеры
-├── findings.json       # находки сканера
-├── key_pool.json       # пул ключей
-└── orex_cache.json     # кэш Orex (бесплатные модели)
+# Конкретный пакет
+go test ./internal/filter/ -v
 ```
 
 ## План развития
 
-### v0.5 (текущая итерация)
-- [ ] Исправить Reddit 403 (OAuth или прокси)
-- [ ] Дете GitHub README парсинг (убрать changelog-мусор)
-- [ ] Добавить Twitter/X источник
-- [ ] Верификация всех confirmed провайдеров
+### v0.7 (следующая)
+- [ ] Reddit OAuth / прокси для разблокировки
+- [ ] Миграция Cohere на /v2/chat (v1 deprecated)
+- [ ] Интеграция с lab-vault API (HTTP) вместо файлового доступа
+- [ ] Тесты для cmd/hunter (integration)
 
-### v0.6 (продакшен)
-- [ ] Интеграция с lab-vault для хранения ключей
-- [ ] Алерты в Telegram
-- [ ] systemd timer для автоматического сканирования
-- [ ] Бенчмарк скорости бесплатных моделей
-
-### v0.7 (интеллектуальная система)
-- [ ] Подбор модели под задачу
-- [ ] Мониторинг изменений в бесплатных тирах
+### v0.8 (продакшен)
+- [ ] Алерты в Telegram (настройка через vault)
 - [ ] Автоматическая ротация ключей
+- [ ] Мониторинг изменений в бесплатных тирах
+
+### v0.9 (интеллект)
+- [ ] Подбор модели под задачу
+- [ ] Бенчмарк скорости бесплатных моделей
 - [ ] Дашборд мониторинга
 
 ## Лицензия
