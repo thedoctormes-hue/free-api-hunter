@@ -3,7 +3,8 @@
 > **Версия:** 1.0.0
 > **Дата:** 2026-06-22
 > **Автор:** Штрейкбрехер (streikbrecher)
-> **Статус:** Draft → Review
+> **Статус:** Partially implemented (Этапы 1-4 завершены, Этапы 5-6 в работе)
+> **Деплой:** https://freeapihunter.shtab-ai.ru
 
 ---
 

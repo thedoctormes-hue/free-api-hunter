@@ -8,7 +8,18 @@ status: active
 
 # Free API Hunter
 
-> **Владелец:** DoctorM&Ai | **Статус:** active | **Версия:** v0.6.0
+> **Владелец:** DoctorM&Ai | **Статус:** active | **Версия:** v0.7.0
+
+## Веб-интерфейс
+
+Дашборд доступен на **https://freeapihunter.shtab-ai.ru**
+
+- Dashboard — обзор статистики, графики, последние находки
+- Providers — каталог провайдеров с фильтрацией и поиском
+- Findings — лента обнаруженных находок
+- Statistics — детальная аналитика
+
+Исходный код фронтенда: `web/` (React + TypeScript + Tailwind CSS)
 
 ## Описание
 
@@ -103,13 +114,32 @@ go vet ./...
 
 ## Деплой
 
+### Backend (Go API)
+
 ```bash
 # Сборка бинарника
 go build -ldflags "-X main.Version=$(git describe --tags --always)" -o bin/hunter cmd/hunter/main.go
 
+# Запуск API сервера
+./bin/hunter --api :8090
+
 # Запуск по расписанию (cron)
 # См. configs/crontab.txt
 ```
+
+### Frontend (React SPA)
+
+```bash
+cd web/
+npm install
+npm run build          # Сборка в dist/
+cp -r dist/* /var/www/freeapihunter/
+```
+
+Nginx конфиг: `/etc/nginx/sites-enabled/freeapihunter.shtab-ai.ru`
+- HTTPS на порту 8443 (Let's Encrypt)
+- `/api/` проксируется на Go backend
+- SPA роутинг через `try_files $uri $uri/ /index.html`
 
 ## Документация
 
