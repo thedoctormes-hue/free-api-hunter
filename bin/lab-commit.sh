@@ -19,7 +19,7 @@
 # ============================================================
 
 # Фиксированный путь к git-authors.json — общий для всех кабинетов
-AUTHORS_JSON="/root/LabDoctorM/.qwen/git-authors.json"
+AUTHORS_JSON="$(dirname "$0")/../git-authors.json"
 
 if [ ! -f "$AUTHORS_JSON" ]; then
     echo "lab-commit: не найден $AUTHORS_JSON" >&2
