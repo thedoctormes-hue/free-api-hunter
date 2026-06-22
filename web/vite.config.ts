@@ -5,6 +5,9 @@ import { resolve } from 'path'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  define: {
+    'import.meta.env.VITE_API_URL': JSON.stringify(''),
+  },
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
