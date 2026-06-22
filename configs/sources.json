@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "version": "0.3.0",
-    "updated": "2026-06-18T08:55:00Z",
-    "updated_by": "raven+streikbreher",
+    "version": "0.4.0",
+    "updated": "2026-06-22T09:50:00Z",
+    "updated_by": "streikbrecher",
     "description": "Источники для сканирования бесплатных LLM API"
   },
   "sources": [
@@ -82,10 +82,9 @@
       "models_count": 27,
       "limits": {
         "rpm": 20,
-        "rpd": 50,
-        "rpd_with_credits": 1000
+        "rpd": 200
       },
-      "limits_note": "50 req/day без кредитов, 1000 req/day при покупке от 10$ кредитов. Источник: openrouter.ai/docs/api/reference/limits (2026-06-20)"
+      "limits_note": "200 req/day без кредитов. Лимиты проверяются через GET /api/v1/key. Источник: openrouter.ai/docs/api/reference/limits (2026-06-22)"
     },
     {
       "id": "google_ai_studio",
@@ -96,12 +95,17 @@
       "status": "verified",
       "verified_by": "zavlab",
       "limits": {
-        "rpm": 1500,
+        "rpm": 15,
         "rpd": 1500,
         "tpm": 1000000
       },
-      "context": 1000000,
-      "warning": "Квота исчерпана (429). ToS: business use only. Blocked in EU/UK/CH."
+      "models": [
+        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-2.5-pro"
+      ],
+      "warning": "Бесплатный тир недоступен в EU/UK/Швейцарии. Промпты могут использоваться Google для улучшения продуктов."
     },
     {
       "id": "groq",
@@ -112,14 +116,17 @@
       "status": "verified",
       "verified_by": "zavlab",
       "limits": {
-        "rpm": 30
+        "rpm": 30,
+        "rpd": 1000
       },
       "models": [
-        "openai/gpt-oss-20b",
         "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant"
+        "llama-3.1-8b-instant",
+        "llama-4-scout-17b-16e-instruct",
+        "qwen3-32b",
+        "gpt-oss-120b"
       ],
-      "rate_limit": "14400 req/day, 6000 tokens/min"
+      "rate_limit": "30 RPM, 1000 req/day. Источник: awesome-free-llm-apis (2026-06-22)"
     },
     {
       "id": "cerebras",
@@ -130,13 +137,16 @@
       "status": "verified",
       "verified_by": "zavlab",
       "limits": {
-        "tps": 2600
+        "rpm": 30,
+        "rpd": 14400,
+        "tpd": 1000000
       },
       "models": [
         "gpt-oss-120b",
         "zai-glm-4.7"
       ],
-      "rate_limit": "5 RPM / 30K tokens/min"
+      "context_free": 8192,
+      "rate_limit": "30 RPM, 14400 req/day, 1M tokens/day. 8K context на бесплатном тире. Источник: awesome-free-llm-apis (2026-06-22)"
     },
     {
       "id": "mistral",
@@ -151,12 +161,14 @@
         "tpm": 500000
       },
       "models": [
-        "mistral-small-latest",
-        "mistral-large-latest",
-        "open-mistral-nemo",
-        "codestral-latest"
+        "mistral-medium-3.5",
+        "mistral-small-4",
+        "mistral-large-3",
+        "mistral-nemo",
+        "codestral",
+        "pixtral-large"
       ],
-      "rate_limit": "50 RPM / 500K tokens/min"
+      "rate_limit": "~1 RPS, 500K tokens/min. ~1B tokens/month на бесплатном тире. Источник: awesome-free-llm-apis (2026-06-22)"
     },
     {
       "id": "cloudflare_workers_ai",
@@ -185,7 +197,17 @@
       "credit_card": false,
       "status": "verified",
       "verified_by": "zavlab",
-      "notes": "Ключ получен и работает."
+      "limits": {
+        "rpm": 20
+      },
+      "models": [
+        "command-a-plus-218b",
+        "command-a-111b",
+        "command-r-plus",
+        "command-r",
+        "command-r7b"
+      ],
+      "notes": "4 ключа в vault, все рабочие. 1000 API calls/month, non-commercial. Источник: awesome-free-llm-apis (2026-06-22)"
     },
     {
       "id": "nvidia_nim",
@@ -266,6 +288,40 @@
       "credit_card": false,
       "status": "confirmed",
       "notes": "DeepSeek V4 Flash, Nemotron промо."
+    },
+    {
+      "id": "aion_labs",
+      "name": "Aion Labs",
+      "url": "https://aionlabs.ai/",
+      "docs_url": "https://docs.aionlabs.ai/",
+      "credit_card": false,
+      "status": "confirmed",
+      "limits": {
+        "rpm": 15,
+        "tpd": 20000
+      },
+      "models": [
+        "aion-2.5",
+        "aion-2.0",
+        "aion-rp-1.0"
+      ],
+      "notes": "Специализация на roleplay/storytelling. 15 RPM, 20K tokens/day. Источник: awesome-free-llm-apis (2026-06-22)"
+    },
+    {
+      "id": "zhipuai_glm",
+      "name": "Zhipuai (GLM)",
+      "url": "https://open.bigmodel.cn/",
+      "docs_url": "https://open.bigmodel.cn/dev/api",
+      "credit_card": false,
+      "status": "confirmed",
+      "limits": {
+        "concurrent": 1
+      },
+      "models": [
+        "glm-4.7-flash",
+        "glm-4.6v-flash"
+      ],
+      "notes": "GLM-4.7-Flash (200K context), GLM-4.6V-Flash (128K, vision). 1 concurrent request. Источник: awesome-free-llm-apis (2026-06-22)"
     }
   ],
   "startup_programs": [

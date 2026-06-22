@@ -1,0 +1,45 @@
+version: "3.8"
+
+services:
+  hunter:
+    build: .
+    container_name: free-api-hunter
+    ports:
+      - "8080:8080"
+    volumes:
+      - hunter-data:/app/data
+      - ./configs:/app/configs:ro
+    environment:
+      - HUNTER_DATA_DIR=/app/data
+      - HUNTER_CONFIG_DIR=/app/configs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Планировщик сканирования (запускает hunter по расписанию)
+  scheduler:
+    build: .
+    container_name: free-api-hunter-scheduler
+    volumes:
+      - hunter-data:/app/data
+      - ./configs:/app/configs:ro
+    environment:
+      - HUNTER_DATA_DIR=/app/data
+      - HUNTER_CONFIG_DIR=/app/configs
+    # Запуск сканирования каждые 6 часов
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          /app/hunter --no-alerts
+          sleep 21600
+        done
+    restart: unless-stopped
+    depends_on:
+      - hunter
+
+volumes:
+  hunter-data:

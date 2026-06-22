@@ -210,7 +210,7 @@ func VerifyAPIKey(key *models.APIKey) *KeyVerifyResult {
 	return result
 }
 
-// ExtractKeyInfo — извлечь информацию с рабочего ключа
+// ExtractKeyInfo — извлечь информацию с рабочего ключа (ключ берётся из vault)
 func ExtractKeyInfo(key *models.APIKey) map[string]interface{} {
 	info := map[string]interface{}{
 		"provider":  key.ProviderName,
@@ -221,12 +221,24 @@ func ExtractKeyInfo(key *models.APIKey) map[string]interface{} {
 		"pricing":   map[string]string{},
 	}
 
+	// Получаем реальный ключ из vault
+	realKey := key.KeyLocation
+	if !strings.HasPrefix(realKey, "sk-") && !strings.HasPrefix(realKey, "gsk_") &&
+		!strings.HasPrefix(realKey, "csk-") && !strings.HasPrefix(realKey, "cfut_") {
+		var err error
+		realKey, err = vault.GetDefaultKey(key.ProviderName)
+		if err != nil {
+			logger.Printf("ExtractKeyInfo: vault error for %s: %v", key.ProviderName, err)
+			return info
+		}
+	}
+
 	testURL := strings.TrimRight(key.Endpoint, "/") + "/models"
 	req, err := http.NewRequest("GET", testURL, nil)
 	if err != nil {
 		return info
 	}
-	req.Header.Set("Authorization", "Bearer "+key.KeyLocation)
+	req.Header.Set("Authorization", "Bearer "+realKey)
 	req.Header.Set("User-Agent", "FreeAPIHunter/0.1")
 
 	resp, err := HTTPClient.Do(req)

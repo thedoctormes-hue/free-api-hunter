@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"free-api-hunter/internal/alerter"
+	"free-api-hunter/internal/api"
 	"free-api-hunter/internal/filter"
 	"free-api-hunter/internal/models"
 	"free-api-hunter/internal/scraper"
@@ -77,7 +78,21 @@ func main() {
 	noAlerts := flag.Bool("no-alerts", false, "Не отправлять алерты в Telegram")
 	alertConfigPath := flag.String("alert-config", "config/alerter.json", "Путь к конфигу алертеров")
 	showVersion := flag.Bool("version", false, "Показать версию и выйти")
+	apiAddr := flag.String("api", "", "Запустить HTTP API сервер на указанном адресе (напр. :8080)")
 	flag.Parse()
+
+	// API сервер
+	if *apiAddr != "" {
+		go func() {
+			server := api.NewServer(*apiAddr)
+			if err := server.ListenAndServe(); err != nil {
+				logger.Fatalf("API server error: %v", err)
+			}
+		}()
+		logger.Printf("API server started on %s", *apiAddr)
+		// Блокируем main чтобы сервер не завершился
+		select {}
+	}
 
 	if *showVersion {
 		fmt.Printf("Free API Hunter %s\n", Version)

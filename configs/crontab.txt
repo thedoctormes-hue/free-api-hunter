@@ -1,0 +1,8 @@
+# Free API Hunter — cron schedule
+# Рекомендуется использовать systemd timer вместо cron (см. free-api-hunter.timer)
+#
+# Полное сканирование каждые 6 часов
+0 */6 * * * cd /opt/free-api-hunter && ./bin/hunter --no-alerts >> /var/log/free-api-hunter/scan.log 2>&1
+#
+# Ежедневный отчёт в 09:00 UTC
+0 9 * * * cd /opt/free-api-hunter && ./bin/hunter --no-alerts --limit 20 >> /var/log/free-api-hunter/report.log 2>&1

@@ -100,7 +100,7 @@ func TestExtractKeyInfo(t *testing.T) {
 
 	key := &models.APIKey{
 		ProviderName: "test",
-		KeyLocation:  "test-key",
+		KeyLocation:  "sk-test-key-12345",
 		Endpoint:     server.URL,
 	}
 

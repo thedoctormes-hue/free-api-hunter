@@ -5,11 +5,18 @@ set -euo pipefail
 HUNTER_DIR="/root/LabDoctorM/projects/free-api-hunter"
 LOG_DIR="/var/log/free-api-hunter"
 TIMESTAMP=$(date +%Y-%m-%d_%H:%M)
+BINARY="$HUNTER_DIR/bin/hunter"
 
 cd "$HUNTER_DIR"
 
+# Собрать бинарник если не существует или старше 1 часа
+if [ ! -f "$BINARY" ] || [ "$(find "$BINARY" -mmin +60 2>/dev/null | wc -l)" -gt 0 ]; then
+    echo "[scan] Building hunter binary..."
+    go build -ldflags "-X main.Version=$(git describe --tags --always 2>/dev/null || echo dev)" -o "$BINARY" ./cmd/hunter
+fi
+
 # Запуск сканера без алертов
-OUTPUT=$(go run ./cmd/hunter -no-alerts -limit 10 2>&1)
+OUTPUT=$("$BINARY" -no-alerts -limit 10 2>&1)
 
 # Подсчёт результатов
 RAW=$(echo "$OUTPUT" | grep "Сырых находок:" | awk '{print $NF}' || echo "0")

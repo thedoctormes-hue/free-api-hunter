@@ -1,0 +1,24 @@
+[Unit]
+Description=Free API Hunter — scan for free LLM APIs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=hunter
+Group=hunter
+WorkingDirectory=/opt/free-api-hunter
+ExecStart=/opt/free-api-hunter/bin/hunter --no-alerts
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=free-api-hunter
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/free-api-hunter/data
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

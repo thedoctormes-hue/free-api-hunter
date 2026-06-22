@@ -7,13 +7,20 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -z "${OPENROUTER_API_KEY:-}" ] && [ -f "$SCRIPT_DIR/.env" ]; then
-  source "$SCRIPT_DIR/.env"
+HUNTER_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Приоритет: env var > vault file > .env fallback
+if [ -n "${OPENROUTER_API_KEY:-}" ]; then
+  KEY="$OPENROUTER_API_KEY"
+elif [ -f "/root/LabDoctorM/vault/free-api-hunter/openrouter/api.key" ]; then
+  KEY=$(cat "/root/LabDoctorM/vault/free-api-hunter/openrouter/api.key" | tr -d '[:space:]')
+elif [ -f "$HUNTER_DIR/.env" ]; then
+  source "$HUNTER_DIR/.env"
+  KEY="${OPENROUTER_API_KEY:-}"
 fi
 
-KEY="${OPENROUTER_API_KEY:-}"
 if [ -z "$KEY" ]; then
-  echo "ERROR: OPENROUTER_API_KEY not set (checked env and $SCRIPT_DIR/.env)"
+  echo "ERROR: OPENROUTER_API_KEY not set (checked env, vault, .env)"
   exit 1
 fi
 
