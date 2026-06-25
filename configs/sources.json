@@ -203,7 +203,7 @@
       "url": "https://dashboard.cohere.com/api-keys",
       "docs_url": "https://docs.cohere.com/",
       "credit_card": false,
-      "status": "verified",
+      "status": "blocked",
       "verified_by": "zavlab",
       "limits": {
         "rpm": 20
@@ -223,7 +223,7 @@
       "url": "https://build.nvidia.com/",
       "docs_url": "https://docs.nvidia.com/nim/",
       "credit_card": false,
-      "status": "deprioritized",
+      "status": "paid_only",
       "limits": {
         "rpm": 40
       },
@@ -254,7 +254,7 @@
       "url": "https://api.together.ai/",
       "docs_url": "https://docs.together.ai/",
       "credit_card": false,
-      "status": "deprioritized",
+      "status": "registration_required",
       "notes": "Бесплатный тир — только Apriel (research preview). Полный каталог от $5 депозита."
     },
     {
@@ -278,7 +278,7 @@
       "name": "Pollinations",
       "url": "https://pollinations.ai/",
       "credit_card": false,
-      "status": "confirmed",
+      "status": "verified",
       "notes": "Анонимный доступ, GPT-OSS 20B."
     },
     {
@@ -303,7 +303,7 @@
       "url": "https://aionlabs.ai/",
       "docs_url": "https://docs.aionlabs.ai/",
       "credit_card": false,
-      "status": "confirmed",
+      "status": "registration_required",
       "limits": {
         "rpm": 15,
         "tpd": 20000
