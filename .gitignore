@@ -34,3 +34,6 @@ data/
 # OS
 .DS_Store
 Thumbs.db
+configs/manus-keys.json
+output/
+__pycache__/
