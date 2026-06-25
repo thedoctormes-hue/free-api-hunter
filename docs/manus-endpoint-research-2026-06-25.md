@@ -2,7 +2,7 @@
 
 **Дата:** 2026-06-25
 **Агент:** Ворон (Researcher)
-**Ключ:** sk-bwv…U4CO (11 символов)
+**Ключ:** sk-bwv*** (11 chars, stored in vault)
 **Базовый URL:** https://api.manus.ai
 
 ---
