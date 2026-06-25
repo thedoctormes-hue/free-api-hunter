@@ -37,3 +37,4 @@ Thumbs.db
 configs/manus-keys.json
 output/
 __pycache__/
+*.pyc
