@@ -92,7 +92,7 @@
       "url": "https://aistudio.google.com/apikey",
       "docs_url": "https://ai.google.dev/gemini-api/docs/api-key",
       "credit_card": false,
-      "status": "verified",
+      "status": "rate_limited",
       "verified_by": "zavlab",
       "limits": {
         "rpm": 15,
@@ -113,7 +113,7 @@
       "url": "https://console.groq.com/keys",
       "docs_url": "https://console.groq.com/docs/quickstart",
       "credit_card": false,
-      "status": "verified",
+      "status": "blocked",
       "verified_by": "zavlab",
       "limits": {
         "rpm": 30,
@@ -322,6 +322,13 @@
         "glm-4.6v-flash"
       ],
       "notes": "GLM-4.7-Flash (200K context), GLM-4.6V-Flash (128K, vision). 1 concurrent request. Источник: awesome-free-llm-apis (2026-06-22)"
+    },
+    {
+      "id": "mistral",
+      "name": "Mistral AI",
+      "url": "https://mistral.ai/",
+      "credit_card": true,
+      "status": "confirmed"
     }
   ],
   "startup_programs": [
