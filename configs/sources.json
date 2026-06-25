@@ -178,7 +178,14 @@
       "credit_card": false,
       "status": "verified",
       "verified_by": "zavlab",
-      "notes": "Edge inference, 10K нейронов/день бесплатно."
+      "notes": "Edge inference, 10K нейронов/день бесплатно.",
+      "models": [
+        "@cf/meta/llama-3.1-8b-instruct",
+        "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "@cf/meta/llama-4-scout-17b-16e-instruct",
+        "@cf/openai/gpt-oss-120b",
+        "@cf/moonshotai/kimi-k2.7-code"
+      ]
     },
     {
       "id": "manus",
@@ -187,7 +194,8 @@
       "credit_card": false,
       "status": "verified",
       "verified_by": "zavlab",
-      "notes": "Ключ получен и работает."
+      "notes": "Agent platform (not LLM inference). Key is NOT a free LLM API key. Removed from LLM rotation.",
+      "type": "agent_platform"
     },
     {
       "id": "cohere",
