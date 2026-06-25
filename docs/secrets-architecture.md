@@ -113,11 +113,11 @@ openclaw secrets audit --check
 - 7cGV7Zre9QWehKoG7wWOlHdAEPgnVEO6n6KzTr86
 
 **Cerebras** (5 ключей):
-- csk-xder4tcyjpkjp9kkd8ekrwnfhcj3n9mpfvp8pnh39ed85tp4
-- csk-6epe6wtr6ddhkmve4tjdp642j83d38xk59w552ptphwht4vk
-- csk-3539k53wjhx2hvdydd8e4nnyfwh6vwt39mkmfdkyvfc8kntf
-- csk-96thmm593xj4wxv32krr338wjhcjc69d3m2ecj92h8849nrh
-- csk-rpc9xkrwkntn2cfj2ch9rcxyxdf84cymvmjkwvpe44c5kh62
+- csk-***MASKED***
+- csk-***MASKED***
+- csk-***MASKED***
+- csk-***MASKED***
+- csk-***MASKED***
 
 **Gemini, Groq** — ключи в vault, нужно перенести в lab-vault
 
