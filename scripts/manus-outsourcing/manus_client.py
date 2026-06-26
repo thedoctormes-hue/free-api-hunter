@@ -3,6 +3,9 @@
 import asyncio
 import json
 import logging
+import os
+from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import aiohttp
@@ -18,6 +21,38 @@ class ManusError(Exception):
         self.message = message
         self.status = status
         super().__init__(f"[{code}] {message}")
+
+
+class TaskStatus(str, Enum):
+    """Статусы задачи Manus."""
+    RUNNING = "running"
+    STOPPED = "stopped"
+    WAITING = "waiting"
+    ERROR = "error"
+
+
+@dataclass
+class TaskResult:
+    """Результат выполненной задачи."""
+    text: str
+    attachments: List[Dict[str, Any]] = field(default_factory=list)
+    structured_output: Optional[Dict[str, Any]] = None
+
+
+class ManusTaskError(ManusError):
+    """Ошибка выполнения задачи."""
+    def __init__(self, task_id: str, status: str, message: str):
+        super().__init__(f"task_{status}", message)
+        self.task_id = task_id
+        self.status = status
+
+
+class ManusTimeoutError(ManusError):
+    """Таймаут ожидания завершения задачи."""
+    def __init__(self, task_id: str, timeout: int):
+        super().__init__("task_timeout", f"Task {task_id} did not complete in {timeout}s")
+        self.task_id = task_id
+        self.timeout = timeout
 
 
 class ManusClient:
@@ -140,6 +175,19 @@ class ManusClient:
     async def get_credits(self) -> Dict[str, Any]:
         return await self._request("GET", "usage.availableCredits")
 
+    async def register_webhook(
+        self,
+        url: str,
+        events: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Register webhook for real-time task notifications."""
+        if events is None:
+            events = ["task_created", "task_completed", "task_failed"]
+        return await self._request("POST", "webhook.create", json_data={
+            "url": url,
+            "events": events,
+        })
+
     async def get_task_detail(self, task_id: str) -> Dict[str, Any]:
         return await self._request("GET", "task.detail", params={"task_id": task_id})
 
@@ -174,6 +222,197 @@ class ManusClient:
             resp.raise_for_status()
             return await resp.read()
 
+    # -----------------------------------------------------------
+    # New API v2 methods
+    # -----------------------------------------------------------
+
+    async def wait_for_completion(
+        self,
+        task_id: str,
+        timeout: int = 300,
+        poll_interval: int = 3,
+    ) -> List[Dict[str, Any]]:
+        """Poll task status via listMessages until stopped/error/timeout.
+
+        Uses task.listMessages (NOT task.detail) for polling.
+        Implements exponential backoff after 30 seconds:
+        3 → 6 → 12 seconds.
+
+        Returns the full message stream (list of message dicts).
+        Raises ManusTimeoutError on timeout.
+        Raises ManusTaskError on error or waiting (if no event type).
+        """
+        start = asyncio.get_event_loop().time()
+        current_interval = poll_interval
+
+        while True:
+            elapsed = asyncio.get_event_loop().time() - start
+            if elapsed >= timeout:
+                raise ManusTimeoutError(task_id, timeout)
+
+            messages_resp = await self.list_messages(task_id, order="desc", limit=20)
+            messages = messages_resp.get("messages", [])
+
+            # Check status_update events
+            status = None
+            waiting_for_event = None
+            for msg in reversed(messages):
+                if msg.get("type") == "status_update":
+                    su = msg.get("status_update", {})
+                    status = su.get("agent_status")
+                    waiting_for_event = su.get("waiting_for_event_type")
+                    break
+
+            if status == "stopped":
+                return messages
+
+            if status == "running":
+                pass  # keep polling
+
+            elif status == "waiting":
+                if waiting_for_event:
+                    logger.info(
+                        "Task %s waiting for: %s — will keep polling",
+                        task_id,
+                        waiting_for_event,
+                    )
+                else:
+                    raise ManusTaskError(
+                        task_id, "waiting", "Task is waiting for user input"
+                    )
+
+            elif status == "error":
+                # Try to extract error message from messages
+                error_msg = "Task ended with error"
+                for msg in messages:
+                    if msg.get("type") == "error_message":
+                        error_msg = msg.get("error_message", {}).get("message", error_msg)
+                        break
+                raise ManusTaskError(task_id, "error", error_msg)
+
+            await asyncio.sleep(current_interval)
+
+            # Exponential backoff after 30s
+            if elapsed > 30:
+                if current_interval == 3:
+                    current_interval = 6
+                elif current_interval == 6:
+                    current_interval = 12
+
+    async def get_result(self, task_id: str) -> TaskResult:
+        """Extract text result and attachments from a completed task.
+
+        Returns a TaskResult dataclass with text, attachments,
+        and optional structured_output.
+        """
+        messages_resp = await self.list_messages(task_id, order="desc", limit=20)
+        messages = messages_resp.get("messages", [])
+
+        text = ""
+        attachments: List[Dict[str, Any]] = []
+        structured_output: Optional[Dict[str, Any]] = None
+
+        for msg in messages:
+            if msg.get("type") == "assistant_message":
+                am = msg.get("assistant_message", {})
+                # Extract text from content blocks
+                for c in am.get("content", []):
+                    if c.get("type") == "output_text":
+                        text = c.get("text", text)
+                # Collect attachments
+                attachments.extend(am.get("attachments", []))
+                # Extract structured output if present
+                if "structured_output_result" in am:
+                    structured_output = am["structured_output_result"]
+
+        return TaskResult(
+            text=text,
+            attachments=attachments,
+            structured_output=structured_output,
+        )
+
+    async def download_attachments(
+        self, task_id: str, output_dir: str = "output"
+    ) -> List[str]:
+        """Download all attachments from a completed task result.
+
+        Saves files to <output_dir>/manus-output/<task_id>/.
+        Returns list of local file paths.
+        """
+        result = await self.get_result(task_id)
+        if not result.attachments:
+            return []
+
+        save_dir = os.path.join(output_dir, "manus-output", task_id)
+        os.makedirs(save_dir, exist_ok=True)
+
+        local_paths: List[str] = []
+        for att in result.attachments:
+            url = att.get("url")
+            if not url:
+                continue
+            filename = att.get("filename", "")
+            if not filename:
+                # Fallback: extract from URL
+                filename = url.rsplit("/", 1)[-1].split("?")[0]
+            if not filename:
+                filename = f"attachment_{len(local_paths)}"
+
+            content = await self.download_file(url)
+            filepath = os.path.join(save_dir, filename)
+            with open(filepath, "wb") as f:
+                f.write(content)
+            local_paths.append(filepath)
+            logger.info("Downloaded attachment: %s", filepath)
+
+        return local_paths
+
+    async def create_project(
+        self, name: str, instruction: str = ""
+    ) -> Dict[str, Any]:
+        """Create a new Manus project.
+
+        POST /v2/project.create
+        Returns the project object (including id).
+        """
+        payload: Dict[str, Any] = {"name": name}
+        if instruction:
+            payload["instruction"] = instruction
+        return await self._request("POST", "project.create", json_data=payload)
+
+    async def upload_file(self, filepath: str) -> str:
+        """Upload a file to Manus for use as task context.
+
+        Steps:
+        1. POST /v2/file.upload with filename → get upload_url
+        2. PUT bytes to upload_url
+        3. Return file_id
+        """
+        filename = os.path.basename(filepath)
+        init = await self.upload_file_init(filename)
+        upload_url = init.get("upload_url")
+        if not upload_url:
+            raise ManusError("upload_error", "No upload_url in response")
+
+        with open(filepath, "rb") as f:
+            content = f.read()
+
+        success = await self.upload_file_content(upload_url, content)
+        if not success:
+            raise ManusError("upload_error", "File upload PUT failed")
+
+        return init.get("file_id", "")
+
+    async def confirm_action(self, task_id: str) -> Dict[str, Any]:
+        """Confirm a pending action on a waiting task.
+
+        POST /v2/task.confirmAction
+        Used when task is in 'waiting' status.
+        """
+        return await self._request(
+            "POST", "task.confirmAction", json_data={"task_id": task_id}
+        )
+
     async def close(self):
         if self._session and not self._session.closed:
             await self._session.close()
@@ -183,3 +422,31 @@ class ManusClient:
 
     async def __aexit__(self, *args):
         await self.close()
+
+
+# ── Standalone helper functions (for import convenience) ─────────────────────
+
+async def get_result(api_key: str, task_id: str) -> Dict[str, Any]:
+    """Convenience: get full result for a task without instantiating ManusClient manually."""
+    client = ManusClient(api_key=api_key)
+    try:
+        result = await client.get_result(task_id)
+        # Convert TaskResult dataclass to dict for callers expecting dict
+        return {
+            "task_id": task_id,
+            "text": result.text,
+            "attachments": result.attachments,
+            "structured_output": result.structured_output,
+        }
+    finally:
+        await client.close()
+
+
+def extract_attachments(response: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Convenience: extract attachments from a messages response dict."""
+    attachments = []
+    for msg in response.get("messages", []):
+        if msg.get("type") == "assistant_message":
+            am = msg.get("assistant_message", {})
+            attachments.extend(am.get("attachments", []))
+    return attachments
