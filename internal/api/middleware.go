@@ -169,9 +169,13 @@ func MaxSizeMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// ============================================================
-// API Key Authentication Middleware
-// ============================================================
+// testMode allows skipping authentication in tests
+var testMode = false
+
+// SetTestMode enables test mode (no auth required)
+func SetTestMode() {
+	testMode = true
+}
 
 var allowedAPIKeys = []string{os.Getenv("FREE_API_HUNTER_API_KEY")}
 

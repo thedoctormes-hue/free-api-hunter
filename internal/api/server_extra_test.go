@@ -17,7 +17,7 @@ const testAPIKey = "test-key-for-unit-tests-only"
 
 func init() {
 	os.Setenv("FREE_API_HUNTER_API_KEY", testAPIKey)
-	SetAPIKeys([]string{testAPIKey})
+	allowedAPIKeys = []string{testAPIKey}
 }
 
 func setupExtraTestDir(t *testing.T) string {

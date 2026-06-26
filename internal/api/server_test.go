@@ -13,6 +13,11 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func init() {
+	os.Setenv("FREE_API_HUNTER_API_KEY", "test-key")
+	SetAPIKeys([]string{"test-key"})
+}
+
 func setupTestDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()

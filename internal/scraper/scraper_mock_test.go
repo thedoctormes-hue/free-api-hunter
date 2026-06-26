@@ -4,12 +4,19 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
 	"free-api-hunter/internal/models"
 )
+
+func init() {
+	validateOutboundURL = func(rawURL string) (*url.URL, error) {
+		return url.Parse(rawURL)
+	}
+}
 
 func TestScrapeGitHubReadmeMock(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

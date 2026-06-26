@@ -19,7 +19,7 @@ import (
 
 var logger = log.New(log.Writer(), "[scraper] ", log.LstdFlags)
 
-// validateOutboundURL is a variable for overriding securego.IsValidOutboundURL in tests.
+// validateOutboundURL is a variable for overriding validateOutboundURL in tests.
 var validateOutboundURL = securego.IsValidOutboundURL
 
 // HTTPClient — базовый HTTP клиент
@@ -148,7 +148,7 @@ func CreateRedditClient() *http.Client {
 
 // FetchURL — загрузить URL, вернуть тело или ошибку
 func FetchURL(rawURL string) (string, error) {
-	_, err := securego.IsValidOutboundURL(rawURL)
+	_, err := validateOutboundURL(rawURL)
 	if err != nil {
 		return "", fmt.Errorf("URL rejected: %w", err)
 	}
@@ -394,7 +394,7 @@ func ScrapeGitHubREADME(rawURL, sourceID string) []models.Finding {
 
 // ScrapeProviderPage — загрузить страницу провайдера для верификации
 func ScrapeProviderPage(rawURL string) (string, error) {
-	_, err := securego.IsValidOutboundURL(rawURL)
+	_, err := validateOutboundURL(rawURL)
 	if err != nil {
 		return "", fmt.Errorf("URL rejected: %w", err)
 	}
