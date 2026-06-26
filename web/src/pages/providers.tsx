@@ -3,15 +3,22 @@ import { useProviders } from '@/hooks/use-providers'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { cn, formatDate } from '@/lib/utils'
-import { ExternalLink, ChevronRight, Filter } from 'lucide-react'
+import { formatDate } from '@/lib/utils'
+import { exportToJSON, exportToCSV } from '@/lib/export'
+import { ExternalLink, ChevronRight, Filter, Download, ArrowUpDown } from 'lucide-react'
 import type { Provider } from '@/lib/types'
 
-export function ProvidersPage({ searchQuery: _searchQuery }: { searchQuery?: string }) {
+type SortField = 'name' | 'status' | 'models_count'
+type SortOrder = 'asc' | 'desc'
+
+export function ProvidersPage({ searchQuery: headerSearch }: { searchQuery?: string }) {
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [ccFilter, setCcFilter] = useState<string>('')
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(headerSearch ?? '')
   const [view, setView] = useState<'cards' | 'table'>('cards')
+  const [sortBy, setSortBy] = useState<SortField>('status')
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc')
+  const [showExportMenu, setShowExportMenu] = useState(false)
 
   const { data: providers, isLoading } = useProviders()
 
@@ -37,18 +44,53 @@ export function ProvidersPage({ searchQuery: _searchQuery }: { searchQuery?: str
       )
     }
 
-    return result.sort((a, b) => {
-      const statusOrder: Record<string, number> = {
-        verified: 0, confirmed: 1, claimed: 2, unverified: 3, expired: 4, deprioritized: 5,
+    const statusOrder: Record<string, number> = {
+      verified: 0, confirmed: 1, claimed: 2, unverified: 3, expired: 4, deprioritized: 5,
+    }
+
+    result.sort((a, b) => {
+      let cmp = 0
+      if (sortBy === 'name') {
+        cmp = a.name.localeCompare(b.name)
+      } else if (sortBy === 'status') {
+        cmp = (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9)
+      } else if (sortBy === 'models_count') {
+        cmp = a.models.length - b.models.length
       }
-      return (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9)
+      return sortOrder === 'asc' ? cmp : -cmp
     })
-  }, [providers, statusFilter, ccFilter, search])
+
+    return result
+  }, [providers, statusFilter, ccFilter, search, sortBy, sortOrder])
 
   const statuses = ['verified', 'confirmed', 'claimed', 'unverified', 'expired', 'deprioritized']
 
+  const handleExportJSON = () => {
+    exportToJSON(filtered, 'providers')
+    setShowExportMenu(false)
+  }
+
+  const handleExportCSV = () => {
+    const csvData = filtered.map(p => ({
+      name: p.name,
+      url: p.url,
+      status: p.status,
+      models_count: p.models.length,
+      models: p.models.join('; '),
+      credit_card: p.credit_card,
+      source: p.source,
+      discovered_at: p.discovered_at,
+      limits: p.limits,
+      notes: p.notes,
+    }))
+    exportToCSV(csvData, 'providers')
+    setShowExportMenu(false)
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
+      <h1 className="text-2xl font-bold text-[var(--text-primary)]">Providers</h1>
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
@@ -85,22 +127,63 @@ export function ProvidersPage({ searchQuery: _searchQuery }: { searchQuery?: str
           className="h-8 px-3 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] w-48"
         />
 
-        <div className="ml-auto flex items-center gap-1 bg-[var(--bg-surface)] rounded-lg border border-[var(--border)] p-0.5">
+        {/* Sort */}
+        <div className="flex items-center gap-1">
+          <ArrowUpDown className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortField)}
+            className="h-8 px-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+          >
+            <option value="status">Sort: Status</option>
+            <option value="name">Sort: Name</option>
+            <option value="models_count">Sort: Models</option>
+          </select>
+          <button
+            onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
+            className="h-8 px-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+          >
+            {sortOrder === 'asc' ? '↑' : '↓'}
+          </button>
+        </div>
+
+        {/* Export */}
+        <div className="relative ml-auto">
+          <button
+            onClick={() => setShowExportMenu(!showExportMenu)}
+            className="inline-flex items-center gap-1.5 h-8 px-3 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export
+          </button>
+          {showExportMenu && (
+            <div className="absolute right-0 top-full mt-1 z-10 w-36 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] shadow-[var(--shadow-md)]">
+              <button
+                onClick={handleExportJSON}
+                className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] rounded-t-lg"
+              >
+                Export JSON
+              </button>
+              <button
+                onClick={handleExportCSV}
+                className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] rounded-b-lg"
+              >
+                Export CSV
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 bg-[var(--bg-surface)] rounded-lg border border-[var(--border)] p-0.5">
           <button
             onClick={() => setView('cards')}
-            className={cn(
-              'px-3 py-1 text-xs rounded-md transition-colors',
-              view === 'cards' ? 'bg-[var(--accent-muted)] text-[var(--accent)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-            )}
+            className={`px-3 py-1 text-xs rounded-md transition-colors ${view === 'cards' ? 'bg-[var(--accent-muted)] text-[var(--accent)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
           >
             Cards
           </button>
           <button
             onClick={() => setView('table')}
-            className={cn(
-              'px-3 py-1 text-xs rounded-md transition-colors',
-              view === 'table' ? 'bg-[var(--accent-muted)] text-[var(--accent)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-            )}
+            className={`px-3 py-1 text-xs rounded-md transition-colors ${view === 'table' ? 'bg-[var(--accent-muted)] text-[var(--accent)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
           >
             Table
           </button>
@@ -152,7 +235,7 @@ function ProviderCard({ provider }: { provider: Provider }) {
                 rel="noopener noreferrer"
                 className="text-xs text-[var(--accent)] hover:underline inline-flex items-center gap-1 mt-1"
               >
-                {new URL(provider.url).hostname}
+                {(() => { try { return new URL(provider.url).hostname } catch { return provider.url } })()}
                 <ExternalLink className="h-3 w-3" />
               </a>
             )}
