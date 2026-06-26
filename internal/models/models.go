@@ -86,6 +86,40 @@ type APIKey struct {
 	Notes        string            `json:"notes"`
 }
 
+// OCRProvider — OCR-провайдер (отдельный тип от LLM-провайдеров)
+type OCRProvider struct {
+	Name            string   `json:"name"`
+	URL             string   `json:"url"`
+	APIKeyURL       string   `json:"api_key_url"`
+	CreditCard      bool     `json:"credit_card"`
+	Status          ProviderStatus `json:"status"`
+	Engines         []int    `json:"engines"`         // доступные движки (1, 2, 3)
+	Languages       []string `json:"languages"`       // поддерживаемые языки
+	FreeQuota       string   `json:"free_quota"`      // бесплатная квота
+	MaxFileSize     string   `json:"max_file_size"`   // макс размер файла
+	HasOverlay      bool     `json:"has_overlay"`     // bounding box overlay
+	HasTableMode    bool     `json:"has_table_mode"`   // табличный режим
+	HasSearchablePDF bool    `json:"has_searchable_pdf"`
+	Notes           string   `json:"notes"`
+	Source          string   `json:"source"`
+	DiscoveredAt    string   `json:"discovered_at"`
+	LastVerified    *string  `json:"last_verified,omitempty"`
+}
+
+// OCRKey — рабочий OCR API ключ
+type OCRKey struct {
+	ProviderName string            `json:"provider_name"`
+	KeyLocation  string            `json:"key_location"` // vault path
+	Endpoint     string            `json:"endpoint"`
+	Engines      []int             `json:"engines"`
+	Languages    []string          `json:"languages"`
+	Limits       map[string]string `json:"limits"`
+	IsActive     bool              `json:"is_active"`
+	LastChecked  *string           `json:"last_checked,omitempty"`
+	CreatedAt    string            `json:"created_at"`
+	Notes        string            `json:"notes"`
+}
+
 // Now — текущее время в ISO формате
 func Now() string {
 	return time.Now().UTC().Format(time.RFC3339)

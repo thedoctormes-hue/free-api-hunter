@@ -13,6 +13,7 @@ import (
 	"free-api-hunter/internal/api"
 	"free-api-hunter/internal/filter"
 	"free-api-hunter/internal/models"
+	"free-api-hunter/internal/ocr"
 	"free-api-hunter/internal/scraper"
 	"free-api-hunter/internal/storage"
 	"free-api-hunter/internal/verifier"
@@ -183,7 +184,13 @@ func main() {
 
 	logger.Println("Scan completed.")
 
-	// 7. Отправляем алерт (если не отключён)
+	// 7. OCR pipeline — верификация и скоринг OCR-провайдеров
+	if *verify {
+		logger.Println("Running OCR pipeline...")
+		runOCRPipeline(*noAlerts, *alertConfigPath)
+	}
+
+	// 8. Отправляем алерт (если не отключён)
 	if !*noAlerts {
 		alertCfg, err := alerter.LoadConfig(*alertConfigPath)
 		if err != nil {
@@ -360,5 +367,86 @@ func printResults(raw []models.Finding, filtered []models.Finding, providers []*
 		fmt.Printf("    Лимиты: %s\n", limitsStr)
 		fmt.Printf("    URL: %s\n", p.URL)
 		fmt.Println()
+	}
+}
+
+// runOCRPipeline — полный pipeline для OCR-провайдеров: верификация → скоринг → алерт
+func runOCRPipeline(noAlerts bool, alertConfigPath string) {
+	ocrProviders := []struct {
+		name   string
+		engine int
+		lang   string
+	}{
+		{"free-api-hunter/ocr-space", 1, "eng"},
+		{"free-api-hunter/ocr-space", 2, "eng"},
+		{"free-api-hunter/ocr-space", 3, "eng"},
+		{"free-api-hunter/ocr-space", 1, "rus"},
+	}
+
+	var verifyResults []*ocr.OCRVerifyResult
+	var testResults []*ocr.OCRTestResult
+	activeCount := 0
+
+	// Шаг 1: Верификация ключа
+	logger.Println("Step 1: Verifying OCR keys...")
+	for _, p := range ocrProviders {
+		// Сначала быстрая проверка ключа
+		simpleResult := ocr.CheckOCRKeySimple(p.name)
+		if !simpleResult.IsActive {
+			logger.Printf("OCR key for %s (engine %d, %s): INACTIVE — %s",
+				p.name, p.engine, p.lang, simpleResult.Error)
+			verifyResults = append(verifyResults, simpleResult)
+			continue
+		}
+
+		// Полная верификация с тестовым изображением
+		result := ocr.VerifyOCRKey(p.name, p.engine, p.lang)
+		verifyResults = append(verifyResults, result)
+		if result.IsActive {
+			activeCount++
+			testResults = append(testResults, &ocr.OCRTestResult{
+				Engine:       p.engine,
+				Language:     p.lang,
+				Success:      true,
+				Text:         result.RecognizedText,
+				ProcessingMs: result.ProcessingMs,
+			})
+		}
+	}
+
+	// Шаг 2: Скоринг
+	logger.Printf("Step 2: Scoring OCR providers... (%d/%d active)", activeCount, len(ocrProviders))
+	score := ocr.ScoreOCRProvider("OCR.space", testResults, "25,000 requests/month, 500/day/IP")
+	logger.Printf("OCR Score for OCR.space: %.0f%%", score.OverallScore*100)
+
+	// Вывод в stdout
+	fmt.Println()
+	fmt.Println(strings.Repeat("─", 40))
+	fmt.Println("OCR PROVIDERS")
+	fmt.Println(strings.Repeat("─", 40))
+	for _, r := range verifyResults {
+		status := "❌"
+		if r.IsActive {
+			status = "✅"
+		}
+		fmt.Printf("%s Engine %d (%s) — %s\n",
+			status, r.EngineUsed, r.Language, r.ProcessingMs)
+	}
+	fmt.Println(strings.Repeat("─", 40))
+	fmt.Printf("Overall Score: %.0f%%\n", score.OverallScore*100)
+
+	// Шаг 3: Алерт
+	if !noAlerts {
+		alertCfg, err := alerter.LoadConfig(alertConfigPath)
+		if err != nil {
+			logger.Printf("OCR alert: config not found (%v), skipping", err)
+		} else {
+			scoreReport := ocr.FormatOCRScoreReport(score)
+			if err := alerter.SendTelegram(alertCfg, scoreReport); err != nil {
+				logger.Printf("OCR alert failed: %v", err)
+			} else {
+				logger.Println("OCR score alert sent")
+			}
+		}
 	}
 }

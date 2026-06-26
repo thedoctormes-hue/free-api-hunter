@@ -1,9 +1,9 @@
 {
   "_meta": {
-    "version": "0.4.0",
-    "updated": "2026-06-22T09:50:00Z",
-    "updated_by": "streikbrecher",
-    "description": "Источники для сканирования бесплатных LLM API"
+    "version": "0.5.0",
+    "updated": "2026-06-26T05:50:00Z",
+    "updated_by": "mangust",
+    "description": "Источники для сканирования бесплатных LLM API и OCR API"
   },
   "sources": [
     {
@@ -337,6 +337,48 @@
       "url": "https://mistral.ai/",
       "credit_card": true,
       "status": "confirmed"
+    },
+    {
+      "id": "ocr_space",
+      "name": "OCR.space",
+      "url": "https://ocr.space/",
+      "docs_url": "https://ocr.space/ocrapi",
+      "credit_card": false,
+      "status": "verified",
+      "verified_by": "zavlab",
+      "type": "ocr",
+      "limits": {
+        "rpm": 1,
+        "rpd": 500,
+        "rpmonth": 25000
+      },
+      "models": [
+        "Engine 1 (fast)",
+        "Engine 2 (balanced)",
+        "Engine 3 (accurate)"
+      ],
+      "languages": 30,
+      "features": {
+        "overlay": true,
+        "table_mode": true,
+        "searchable_pdf": true,
+        "auto_orientation": true,
+        "auto_language": true
+      },
+      "free_quota": "25,000 requests/month, 500/day/IP",
+      "max_file_size": "1MB (free), 5MB (PRO)",
+      "notes": "Free OCR API by a9t9 GmbH. 3 engines, 30+ languages. Key in vault/free-api-hunter/ocr-space/. Engine 3 has separate 2,500 quota on free tier."
+    }
+  ],
+  "ocr_sources": [
+    {
+      "id": "ocr_space_status",
+      "type": "web_page",
+      "name": "OCR.space Status",
+      "url": "https://ocr.space/",
+      "enabled": true,
+      "priority": 1,
+      "notes": "Monitor OCR.space for API changes, new engines, pricing updates"
     }
   ],
   "startup_programs": [
