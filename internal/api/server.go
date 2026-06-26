@@ -1,13 +1,16 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"free-api-hunter/internal/models"
@@ -32,6 +35,41 @@ func NewServer(addr string) *Server {
 	}
 	s.routes()
 	return s
+}
+
+// ListenAndServeGraceful — запустить сервер с graceful shutdown.
+// Сервер завершается при получении SIGINT или SIGTERM.
+func (s *Server) ListenAndServeGraceful() error {
+	srv := &http.Server{
+		Addr:    s.Addr,
+		Handler: s.mux,
+	}
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	errChan := make(chan error, 1)
+	go func() {
+		logger.Printf("API server starting on %s", s.Addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errChan <- err
+		}
+	}()
+
+	select {
+	case err := <-errChan:
+		return err
+	case sig := <-sigChan:
+		logger.Printf("Received signal %v, shutting down...", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			logger.Printf("Graceful shutdown error: %v", err)
+			return err
+		}
+		logger.Println("API server stopped gracefully")
+		return nil
+	}
 }
 
 // NewServerWithDir — создать сервер с кастомной директорией данных

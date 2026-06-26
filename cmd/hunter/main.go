@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"sort"
 	"strings"
 
 	"free-api-hunter/internal/alerter"
@@ -14,6 +13,7 @@ import (
 	"free-api-hunter/internal/filter"
 	"free-api-hunter/internal/models"
 	"free-api-hunter/internal/ocr"
+	"free-api-hunter/internal/output"
 	"free-api-hunter/internal/pollinations"
 	"free-api-hunter/internal/scraper"
 	"free-api-hunter/internal/storage"
@@ -84,54 +84,105 @@ func main() {
 	apiAddr := flag.String("api", "", "Запустить HTTP API сервер на указанном адресе (напр. :8080)")
 	flag.Parse()
 
-	// API сервер
-	if *apiAddr != "" {
-		go func() {
-			server := api.NewServer(*apiAddr)
-			if err := server.ListenAndServe(); err != nil {
-				logger.Fatalf("API server error: %v", err)
-			}
-		}()
-		logger.Printf("API server started on %s", *apiAddr)
-		// Блокируем main чтобы сервер не завершился
-		select {}
-	}
-
 	if *showVersion {
 		fmt.Printf("Free API Hunter %s\n", Version)
 		os.Exit(0)
 	}
 
+	// API сервер (graceful shutdown)
+	if *apiAddr != "" {
+		server := api.NewServer(*apiAddr)
+		logger.Printf("API server starting on %s", *apiAddr)
+		if err := server.ListenAndServeGraceful(); err != nil {
+			logger.Fatalf("API server error: %v", err)
+		}
+		return
+	}
+
 	logger.Printf("Free API Hunter %s starting...", Version)
 
-	// 1. Загружаем конфиг источников
-	config, err := loadConfig("config/sources.json")
+	// 1. Load all config
+	config, filterConfig, err := loadAllConfig(*source)
 	if err != nil {
 		logger.Fatalf("Failed to load config: %v", err)
 	}
 
-	// 2. Сканируем источники
-	sources := config.Sources
-	if *source != "" {
+	// 2. Run scrape + filter pipeline
+	rawFindings, findings, err := runScrapePipeline(config, filterConfig)
+	if err != nil {
+		logger.Fatalf("Pipeline error: %v", err)
+	}
+
+	// 3. Load/verify providers
+	providers := loadInitialProviders(config)
+	if *verify {
+		providers = verifyProviders(providers)
+	}
+
+	// 4. Print results
+	output.PrintResults(rawFindings, findings, providers, *limit)
+
+	// 5. Pollinations pipeline
+	if *verify {
+		providers = runPollinationsPipeline(providers)
+	}
+
+	// 6. Save results
+	if !*dryRun {
+		saveResults(providers, findings)
+	} else {
+		logger.Println("Dry run — results not saved")
+	}
+
+	logger.Println("Scan completed.")
+
+	// 7. OCR pipeline
+	if *verify {
+		logger.Println("Running OCR pipeline...")
+		runOCRPipeline(*noAlerts, *alertConfigPath)
+	}
+
+	// 8. TTS pipeline
+	if *verify {
+		logger.Println("Running TTS pipeline...")
+		runTTSPipeline(*noAlerts, *alertConfigPath)
+	}
+
+	// 9. Send alert
+	if !*noAlerts {
+		sendAlert(*alertConfigPath, len(rawFindings), len(findings))
+	}
+}
+
+// loadAllConfig loads sources.json and filters.json, optionally filtering by source ID.
+func loadAllConfig(sourceID string) (*Config, FilterConfig, error) {
+	config, err := loadConfig("config/sources.json")
+	if err != nil {
+		return nil, FilterConfig{}, err
+	}
+
+	if sourceID != "" {
 		var filtered []scraper.SourceConfig
-		for _, s := range sources {
-			if s.ID == *source {
+		for _, s := range config.Sources {
+			if s.ID == sourceID {
 				filtered = append(filtered, s)
 			}
 		}
 		if len(filtered) == 0 {
-			logger.Fatalf("Source %s not found or disabled", *source)
+			return nil, FilterConfig{}, fmt.Errorf("source %s not found or disabled", sourceID)
 		}
-		sources = filtered
+		config.Sources = filtered
 	}
 
-	logger.Println("Running scraper...")
-	rawFindings := scraper.RunScraper(sources)
-
-	// 3. Загружаем фильтры
 	filterConfig := loadFilterConfig("config/filters.json")
+	return config, filterConfig, nil
+}
 
-	// 4. Фильтруем мусор
+// runScrapePipeline runs the scraper and filter engine on the given sources.
+func runScrapePipeline(config *Config, filterConfig FilterConfig) ([]models.Finding, []models.Finding, error) {
+	logger.Println("Running scraper...")
+	rawFindings := scraper.RunScraper(config.Sources)
+
 	engine := filter.NewEngine()
 	engine.ApplyConfig(filter.FilterConfigData{
 		ExcludedProviders: filterConfig.ExcludedProviders,
@@ -145,105 +196,86 @@ func main() {
 		CheckURLUnique:    filterConfig.Dedup.CheckURLUnique,
 	})
 	findings := engine.FilterFindings(rawFindings)
+	return rawFindings, findings, nil
+}
 
-	// 5. Загружаем/верифицируем провайдеров
-	providers := loadInitialProviders(config)
-	if *verify {
-		logger.Printf("Verifying %d providers...", len(providers))
-		for _, p := range providers {
-			result := verifier.VerifyProviderPage(p)
-			p.LastVerified = &result.CheckedAt
-			if result.URLAlive && result.FreeTierMentioned && (result.CreditCardReq == nil || !*result.CreditCardReq) {
-				p.Status = models.StatusConfirmed
-			} else if result.URLAlive {
-				p.Status = models.StatusClaimed
-			} else {
-				p.Status = models.StatusExpired
-			}
-		}
-	}
-
-	// 6. Выводим результаты
-	printResults(rawFindings, findings, providers, *limit)
-
-	// 6b. Pollinations pipeline — верификация и обогащение моделей
-	if *verify {
-		logger.Println("Testing Pollinations models...")
-		pollInfo, pollResults := pollinations.TestAllModels()
-		if pollInfo != nil {
-			pollProvider := pollinations.ToProvider(pollInfo)
-			// Обновляем или добавляем провайдера
-			updated := false
-			for i, p := range providers {
-				if p.Name == pollProvider.Name {
-					providers[i] = pollProvider
-					updated = true
-					break
-				}
-			}
-			if !updated {
-				providers = append(providers, pollProvider)
-			}
-			freeCount := len(pollInfo.ModelsFree)
-			paidCount := len(pollInfo.ModelsPaid)
-			logger.Printf("Pollinations: %d free, %d paid models", freeCount, paidCount)
-			_ = pollResults
-		}
-
-		// Image generation test
-		ok, msg := pollinations.VerifyImageGeneration()
-		if ok {
-			logger.Println("Pollinations image generation: ✅")
+// verifyProviders verifies each provider's page and updates status.
+func verifyProviders(providers []*models.Provider) []*models.Provider {
+	logger.Printf("Verifying %d providers...", len(providers))
+	for _, p := range providers {
+		result := verifier.VerifyProviderPage(p)
+		p.LastVerified = &result.CheckedAt
+		if result.URLAlive && result.FreeTierMentioned && (result.CreditCardReq == nil || !*result.CreditCardReq) {
+			p.Status = models.StatusConfirmed
+		} else if result.URLAlive {
+			p.Status = models.StatusClaimed
 		} else {
-			logger.Printf("Pollinations image generation: %s", msg)
+			p.Status = models.StatusExpired
 		}
 	}
+	return providers
+}
 
-	// 6c. Сохраняем результаты (включая Pollinations)
-	if !*dryRun {
-		logger.Println("Saving results...")
-		if err := storage.SaveProviders(providers, ""); err != nil {
-			logger.Printf("Failed to save providers: %v", err)
+// runPollinationsPipeline tests Pollinations models and adds/updates the provider.
+func runPollinationsPipeline(providers []*models.Provider) []*models.Provider {
+	logger.Println("Testing Pollinations models...")
+	pollInfo, pollResults := pollinations.TestAllModels()
+	if pollInfo != nil {
+		pollProvider := pollinations.ToProvider(pollInfo)
+		updated := false
+		for i, p := range providers {
+			if p.Name == pollProvider.Name {
+				providers[i] = pollProvider
+				updated = true
+				break
+			}
 		}
-		var findingsPtr []*models.Finding
-		for i := range findings {
-			findingsPtr = append(findingsPtr, &findings[i])
+		if !updated {
+			providers = append(providers, pollProvider)
 		}
-		if err := storage.SaveFindings(findingsPtr, ""); err != nil {
-			logger.Printf("Failed to save findings: %v", err)
-		}
-		logger.Println("Results saved to data/")
+		freeCount := len(pollInfo.ModelsFree)
+		paidCount := len(pollInfo.ModelsPaid)
+		logger.Printf("Pollinations: %d free, %d paid models", freeCount, paidCount)
+		_ = pollResults
+	}
+
+	ok, msg := pollinations.VerifyImageGeneration()
+	if ok {
+		logger.Println("Pollinations image generation: ✅")
 	} else {
-		logger.Println("Dry run — results not saved")
+		logger.Printf("Pollinations image generation: %s", msg)
 	}
+	return providers
+}
 
-	logger.Println("Scan completed.")
-
-	// 7. OCR pipeline — верификация и скоринг OCR-провайдеров
-	if *verify {
-		logger.Println("Running OCR pipeline...")
-		runOCRPipeline(*noAlerts, *alertConfigPath)
+// saveResults persists providers and findings to disk.
+func saveResults(providers []*models.Provider, findings []models.Finding) {
+	logger.Println("Saving results...")
+	if err := storage.SaveProviders(providers, ""); err != nil {
+		logger.Printf("Failed to save providers: %v", err)
 	}
-
-	// 8. TTS pipeline — верификация и скоринг TTS-провайдеров
-	if *verify {
-		logger.Println("Running TTS pipeline...")
-		runTTSPipeline(*noAlerts, *alertConfigPath)
+	var findingsPtr []*models.Finding
+	for i := range findings {
+		findingsPtr = append(findingsPtr, &findings[i])
 	}
+	if err := storage.SaveFindings(findingsPtr, ""); err != nil {
+		logger.Printf("Failed to save findings: %v", err)
+	}
+	logger.Println("Results saved to data/")
+}
 
-	// 9. Отправляем алерт (если не отключён)
-	if !*noAlerts {
-		alertCfg, err := alerter.LoadConfig(*alertConfigPath)
-		if err != nil {
-			logger.Printf("Alert config not found (%v), skipping alerts", err)
-		} else {
-			report := alerter.FormatScanReport(len(rawFindings), len(findings), nil)
-			if err := alerter.SendTelegram(alertCfg, report); err != nil {
-				logger.Printf("Failed to send alert: %v", err)
-			} else {
-				logger.Println("Alert sent to Telegram")
-			}
-		}
+// sendAlert loads alert config and sends a Telegram report.
+func sendAlert(alertConfigPath string, rawCount, filteredCount int) {
+	alertCfg, err := alerter.LoadConfig(alertConfigPath)
+	if err != nil {
+		logger.Printf("Alert config not found (%v), skipping alerts", err)
+		return
+	}
+	report := alerter.FormatScanReport(rawCount, filteredCount, nil)
+	if err := alerter.SendTelegram(alertCfg, report); err != nil {
+		logger.Printf("Failed to send alert: %v", err)
+	} else {
+		logger.Println("Alert sent to Telegram")
 	}
 }
 
@@ -344,71 +376,6 @@ func loadInitialProviders(config *Config) []*models.Provider {
 		len(result), len(runtimeProviders), len(result)-len(runtimeProviders),
 		len(runtimeProviders)+len(configProviders)-len(result))
 	return result
-}
-
-func printResults(raw []models.Finding, filtered []models.Finding, providers []*models.Provider, limit int) {
-	fmt.Println()
-	fmt.Println(strings.Repeat("=", 60))
-	fmt.Println("FREE API HUNTER — РЕЗУЛЬТАТЫ")
-	fmt.Println(strings.Repeat("=", 60))
-	fmt.Printf("Сырых находок: %d\n", len(raw))
-	fmt.Printf("После фильтра: %d\n", len(filtered))
-	fmt.Printf("Провайдеров в базе: %d\n", len(providers))
-	fmt.Println(strings.Repeat("-", 60))
-
-	// Топ находок
-	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].QualityScore > filtered[j].QualityScore
-	})
-
-	topN := limit
-	if topN > len(filtered) {
-		topN = len(filtered)
-	}
-	fmt.Printf("\nТоп %d находок:\n", topN)
-	for i := 0; i < topN; i++ {
-		f := filtered[i]
-		fmt.Printf("%d. [%.2f] %s\n", i+1, f.QualityScore, f.Title)
-		fmt.Printf("   Источник: %s\n", f.SourceID)
-		fmt.Printf("   URL: %s\n", f.URL)
-		desc := f.Description
-		if len(desc) > 150 {
-			desc = desc[:150] + "..."
-		}
-		fmt.Printf("   Описание: %s\n", desc)
-		fmt.Println()
-	}
-
-	// Провайдеры по приоритету (verified + confirmed, без credit card)
-	var highPri []*models.Provider
-	for _, p := range providers {
-		if (p.Status == models.StatusVerified || p.Status == models.StatusConfirmed) && !p.CreditCard {
-			highPri = append(highPri, p)
-		}
-	}
-	sort.Slice(highPri, func(i, j int) bool {
-		return highPri[i].Name < highPri[j].Name
-	})
-
-	fmt.Printf("\nПодтверждённых бесплатных провайдеров: %d\n", len(highPri))
-	if len(highPri) == 0 {
-		fmt.Println("  Нет подтверждённых провайдеров.")
-	}
-	for _, p := range highPri {
-		modelsStr := "N/A"
-		if len(p.Models) > 0 {
-			modelsStr = strings.Join(p.Models, ", ")
-		}
-		limitsStr := p.Limits
-		if limitsStr == "" {
-			limitsStr = "не указаны"
-		}
-		fmt.Printf("  • %s\n", p.Name)
-		fmt.Printf("    Модели: %s\n", modelsStr)
-		fmt.Printf("    Лимиты: %s\n", limitsStr)
-		fmt.Printf("    URL: %s\n", p.URL)
-		fmt.Println()
-	}
 }
 
 // runTTSPipeline — полный pipeline для TTS-провайдеров: верификация → скоринг → алерт

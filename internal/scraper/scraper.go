@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"free-api-hunter/internal/models"
@@ -50,6 +52,81 @@ func waitForRedditRateLimit() {
 		time.Sleep(redditMinInterval - elapsed)
 	}
 	lastRedditRequest = time.Now()
+}
+
+// ─── Domain Rate Limiter ───
+
+type domainRateLimiter struct {
+	mu       sync.Mutex
+	lastReq  map[string]time.Time
+	interval time.Duration
+}
+
+var defaultRateLimiter = &domainRateLimiter{
+	lastReq:  make(map[string]time.Time),
+	interval: 1 * time.Second, // max 1 request per second per domain
+}
+
+// WaitForRate blocks until the minimum interval for the given domain has passed.
+// If customClient is non-nil and implements the http.RoundTripper protocol,
+// it is used instead of HTTPClient for the actual fetch.
+func (r *domainRateLimiter) WaitForRate(domain string) {
+	r.mu.Lock()
+	last, ok := r.lastReq[domain]
+	r.mu.Unlock()
+
+	if ok {
+		elapsed := time.Since(last)
+		if elapsed < r.interval {
+			time.Sleep(r.interval - elapsed)
+		}
+	}
+
+	r.mu.Lock()
+	r.lastReq[domain] = time.Now()
+	r.mu.Unlock()
+}
+
+// extractDomain parses a URL and returns its host domain.
+func extractDomain(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	host := u.Hostname()
+	if host == "" {
+		return rawURL
+	}
+	// Stripwww. prefix for consistency
+	if strings.HasPrefix(host, "www.") {
+		host = host[4:]
+	}
+	return host
+}
+
+// SetHTTPClient allows tests to inject a custom HTTP client.
+// Pass nil to reset to the default.
+func SetHTTPClient(client *http.Client) {
+	mu.Lock()
+	defer mu.Unlock()
+	if client == nil {
+		HTTPClient = &http.Client{Timeout: 15 * time.Second}
+	} else {
+		HTTPClient = client
+	}
+}
+
+var mu sync.Mutex // protects HTTPClient replacements
+
+// extractHost returns the host:port from a URL string (used for rate limiting).
+func extractHost(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	_, port, _ := net.SplitHostPort(u.Host)
+	_ = port
+	return u.Hostname()
 }
 
 // CreateRedditClient создаёт HTTP клиент оптимизированный для Reddit
@@ -312,6 +389,12 @@ func ScrapeProviderPage(rawURL string) (string, error) {
 
 // ScrapeWebPage — сканировать веб-страницу в поисках упоминаний бесплатных API
 func ScrapeWebPage(rawURL, sourceID string) []models.Finding {
+	// Rate limit: max 1 req/sec per domain
+	host := extractHost(rawURL)
+	if host != "" {
+		defaultRateLimiter.WaitForRate(host)
+	}
+
 	raw, err := FetchURL(rawURL)
 	if err != nil {
 		logger.Printf("ScrapeWebPage failed for %s: %v", rawURL, err)
