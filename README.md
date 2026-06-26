@@ -1,8 +1,8 @@
 ---
 description: "free-api-hunter — README"
 type: readme
-last_reviewed: 2026-06-22
-last_code_change: 2026-06-22
+last_reviewed: 2026-06-26
+last_code_change: 2026-06-26
 status: active
 ---
 
@@ -95,6 +95,30 @@ sources.json → scraper → []Finding (сырые)
 echo -n "API_KEY" > /root/LabDoctorM/vault/free-api-hunter/{provider}/api.key
 chmod 600 /root/LabDoctorM/vault/free-api-hunter/{provider}/api.key
 ```
+
+## TTS/STT провайдеры
+
+Free API Hunter поддерживает не только LLM, но и TTS/STT провайдеров (ElevenLabs, и др.).
+
+**Отдельная модель данных:** `TTSProvider` в `internal/models/models.go` — метрики (chars, voice clones, audio tags) отличаются от LLM-метрик (RPM, TPM).
+
+**Key Pool с ротацией:** `internal/tts/keypool.go` — round-robin между несколькими ключами, отслеживание расхода символов, автопометка исчерпанных.
+
+```bash
+# Ключи хранятся в vault:
+echo -n "sk_ключ_1" > /root/LabDoctorM/vault/free-api-hunter/elevenlabs/api.key
+echo -n "sk_ключ_2" > /root/LabDoctorM/vault/free-api-hunter/elevenlabs/api.key.1
+
+# Верификация через пул (автоматическая ротация)
+./bin/hunter --verify
+```
+
+**API:**
+- `GET /api/v1/tts/providers` — список TTS-провайдеров
+- `GET /api/v1/tts/providers/{id}` — провайдер по ID
+- `GET /api/v1/tts/stats` — статистика
+
+**Фронтенд:** страница `/tts` в дашборде.
 
 ## Разработка
 
