@@ -63,6 +63,7 @@ func TestHealth(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/health", nil)
+	req.Header.Set("X-API-Key", "test-key")
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -86,6 +87,7 @@ func TestListProviders(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/providers", nil)
+	req.Header.Set("X-API-Key", "test-key")
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -109,6 +111,7 @@ func TestFilterProvidersByStatus(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/providers?status=verified", nil)
+	req.Header.Set("X-API-Key", "test-key")
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -126,6 +129,7 @@ func TestFilterProvidersNoCreditCard(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/providers?credit_card=false", nil)
+	req.Header.Set("X-API-Key", "test-key")
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -143,6 +147,7 @@ func TestGetProviderByID(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/providers/Cohere", nil)
+	req.Header.Set("X-API-Key", "test-key")
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -165,6 +170,7 @@ func TestGetProviderNotFound(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/providers/nonexistent", nil)
+	req.Header.Set("X-API-Key", "test-key")
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -183,6 +189,7 @@ func TestListFindings(t *testing.T) {
 	_ = writeTestData
 
 	req := httptest.NewRequest("GET", "/api/v1/findings", nil)
+	req.Header.Set("X-API-Key", "test-key")
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -200,6 +207,7 @@ func TestFilterFindingsBySource(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/findings?source=hackernews", nil)
+	req.Header.Set("X-API-Key", "test-key")
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -222,6 +230,7 @@ func TestFindingsLimit(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/findings?limit=1", nil)
+	req.Header.Set("X-API-Key", "test-key")
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -239,6 +248,7 @@ func TestStats(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/stats", nil)
+	req.Header.Set("X-API-Key", "test-key")
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -263,6 +273,7 @@ func TestMethodNotAllowed(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("POST", "/api/v1/providers", nil)
+	req.Header.Set("X-API-Key", "test-key")
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -277,6 +288,7 @@ func TestNotFound(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/nonexistent", nil)
+	req.Header.Set("X-API-Key", "test-key")
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -291,6 +303,7 @@ func TestIndexPage(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("X-API-Key", "test-key")
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
