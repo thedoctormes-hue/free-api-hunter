@@ -1,0 +1,46 @@
+{
+  "tts_providers": [
+    {
+      "id": "elevenlabs",
+      "name": "ElevenLabs",
+      "url": "https://api.elevenlabs.io",
+      "api_key_url": "https://api.elevenlabs.io/v1/user/subscription",
+      "credit_card": false,
+      "status": "active",
+      "models": [
+        "eleven_v3",
+        "eleven_flash_v2_5",
+        "eleven_multilingual_v2",
+        "eleven_turbo_v2_5",
+        "eleven_turbo_v2",
+        "eleven_flash_v2",
+        "eleven_monolingual_v1",
+        "eleven_multilingual_v1",
+        "eleven_english_sts_v2",
+        "eleven_multilingual_sts_v2"
+      ],
+      "limits": "Free: 10K chars/month, 3 voice clones",
+      "free_tier": {
+        "char_limit": 10000,
+        "voice_clones": 3,
+        "reset_period": "monthly"
+      },
+      "features": [
+        "audio_tags",
+        "voice_cloning",
+        "pronunciation_dicts",
+        "multi_speaker_dialogue",
+        "multilingual",
+        "streaming"
+      ],
+      "languages": [
+        "en",
+        "ru",
+        "70+"
+      ],
+      "source": "https://elevenlabs.io/docs/eleven-api/quickstart",
+      "priority": 1,
+      "notes": "Free tier: 10K chars/month. Best quality TTS. Audio Tags for expressiveness. Zero retention mode (enable_logging=false). EU residency endpoint: api.eu.residency.elevenlabs.io (GDPR)."
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import { LayoutDashboard, Server, Search, BarChart3 } from 'lucide-react'
+import { LayoutDashboard, Server, Search, BarChart3, Mic } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface SidebarProps {
@@ -12,6 +12,7 @@ const navItems = [
   { path: '/providers', label: 'Providers', icon: Server },
   { path: '/findings', label: 'Findings', icon: Search },
   { path: '/stats', label: 'Statistics', icon: BarChart3 },
+  { path: '/tts', label: 'TTS/STT', icon: Mic },
 ]
 
 export function Sidebar({ currentPath, isOpen, onClose }: SidebarProps) {

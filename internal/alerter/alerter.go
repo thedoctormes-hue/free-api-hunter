@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"free-api-hunter/internal/models"
 	"free-api-hunter/internal/orex"
 )
 
@@ -218,4 +219,93 @@ func NewOrexAlertEvent(eventType, provider, model, status, details string) *Orex
 func (e *OrexAlertEvent) ToJSON() string {
 	b, _ := json.Marshal(e)
 	return string(b)
+}
+
+// ─── TTS Alerts ───
+
+// FormatTTSReport — отчёт о TTS-провайдерах для Telegram
+func FormatTTSReport(results []*models.TTSVerifyResult, scores []*models.TTSScore, providers []*models.TTSProvider) string {
+	var b strings.Builder
+
+	b.WriteString("🎙 <b>TTS/STT Providers Report</b>\n\n")
+
+	for i, r := range results {
+		if i >= len(providers) {
+			break
+		}
+		p := providers[i]
+		status := "❌"
+		if r.IsActive {
+			status = "✅"
+		}
+
+		b.WriteString(fmt.Sprintf("%s <b>%s</b>\n", status, p.Name))
+
+		if r.IsActive {
+			b.WriteString(fmt.Sprintf("   Plan: <b>%s</b>\n", r.Plan))
+			b.WriteString(fmt.Sprintf("   Characters: %d/month\n", r.CharLimit))
+			b.WriteString(fmt.Sprintf("   Voices: %d\n", len(r.Voices)))
+
+			if i < len(scores) {
+				b.WriteString(fmt.Sprintf("   Score: %.0f%%\n", scores[i].OverallScore*100))
+			}
+
+			// Показываем первые 3 голоса
+			if len(r.Voices) > 0 {
+				limit := 3
+				if len(r.Voices) < limit {
+					limit = len(r.Voices)
+				}
+				b.WriteString(fmt.Sprintf("   Sample voices: %s\n", strings.Join(r.Voices[:limit], ", ")))
+			}
+		} else if r.Error != "" {
+			b.WriteString(fmt.Sprintf("   Error: %s\n", r.Error))
+		}
+
+		b.WriteString("\n")
+	}
+
+	b.WriteString(fmt.Sprintf("⏰ %s UTC", time.Now().Format("2006-01-02 15:04")))
+	return b.String()
+}
+
+// FormatTTSKeyStatus — статус TTS-ключа для Telegram
+func FormatTTSKeyStatus(result *models.TTSVerifyResult, providerName string) string {
+	var b strings.Builder
+
+	if result.IsActive {
+		b.WriteString("✅ <b>TTS Key Active</b>\n\n")
+		b.WriteString(fmt.Sprintf("Provider: <b>%s</b>\n", providerName))
+		b.WriteString(fmt.Sprintf("Plan: %s\n", result.Plan))
+		b.WriteString(fmt.Sprintf("Characters: %d/month\n", result.CharLimit))
+		b.WriteString(fmt.Sprintf("Voices available: %d\n", len(result.Voices)))
+	} else {
+		b.WriteString("❌ <b>TTS Key Failed</b>\n\n")
+		b.WriteString(fmt.Sprintf("Provider: <b>%s</b>\n", providerName))
+		if result.Error != "" {
+			b.WriteString(fmt.Sprintf("Error: %s\n", result.Error))
+		}
+	}
+
+	b.WriteString(fmt.Sprintf("\n⏰ %s UTC", time.Now().Format("2006-01-02 15:04")))
+	return b.String()
+}
+
+// FormatTTSScoreReport — отчёт с оценкой TTS-провайдера
+func FormatTTSScoreReport(score *models.TTSScore) string {
+	var b strings.Builder
+
+	b.WriteString(fmt.Sprintf("📊 <b>TTS Score — %s</b>\n\n", score.ProviderName))
+	b.WriteString(fmt.Sprintf("Overall: <b>%.0f%%</b>\n", score.OverallScore*100))
+	b.WriteString(fmt.Sprintf("├ Free Tier: %.0f%%\n", score.FreeTierScore*100))
+	b.WriteString(fmt.Sprintf("├ Features: %.0f%%\n", score.FeatureScore*100))
+	b.WriteString(fmt.Sprintf("├ Languages: %.0f%%\n", score.LanguageScore*100))
+	b.WriteString(fmt.Sprintf("└ Latency: %.0f%%\n", score.LatencyScore*100))
+
+	if score.HasFreeTier {
+		b.WriteString(fmt.Sprintf("\n🆓 Free tier: %d chars/month\n", score.CharLimit))
+	}
+
+	b.WriteString(fmt.Sprintf("\n⏰ %s UTC", time.Now().Format("2006-01-02 15:04")))
+	return b.String()
 }

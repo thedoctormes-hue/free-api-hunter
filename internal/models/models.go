@@ -124,3 +124,60 @@ type OCRKey struct {
 func Now() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
+
+// TTSProvider — TTS/STT провайдер
+// Отдельная модель от Provider (LLM) и OCRProvider — потому что метрики TTS
+// (chars, voice clones, audio tags, latency) принципиально отличаются
+// от LLM-метрик (RPM, TPM, context length).
+// Смешивание в одной модели создало бы слишком много nullable полей.
+//
+// PAT-004: проверены все смежные проекты — аналогов нет.
+type TTSProvider struct {
+	Name         string         `json:"name"`
+	URL          string         `json:"url"`
+	APIKeyURL    string         `json:"api_key_url"`
+	CreditCard   bool           `json:"credit_card"`
+	Status       ProviderStatus `json:"status"`
+	Models       []string       `json:"models"`   // голоса или модели TTS
+	Limits       string         `json:"limits"`
+	FreeTier     *FreeTierInfo  `json:"free_tier,omitempty"`
+	Features     []string       `json:"features"` // audio_tags, voice_cloning, realtime, etc.
+	Languages    []string       `json:"languages"`
+	Source       string         `json:"source"`
+	Priority     Priority       `json:"priority"`
+	DiscoveredAt string         `json:"discovered_at"`
+	LastVerified *string      `json:"last_verified,omitempty"`
+	Notes        string         `json:"notes"`
+}
+
+// FreeTierInfo — информация о бесплатном тире
+type FreeTierInfo struct {
+	CharLimit   int    `json:"char_limit"`
+	VoiceClones int    `json:"voice_clones"`
+	ResetPeriod string `json:"reset_period"` // monthly, daily, never
+}
+
+// TTSVerifyResult — результат верификации TTS-провайдера
+type TTSVerifyResult struct {
+	IsActive     bool     `json:"is_active"`
+	StatusCode   int      `json:"status_code"`
+	Error        string   `json:"error,omitempty"`
+	Models       []string `json:"models"`
+	Voices       []string `json:"voices"`
+	Plan        string   `json:"plan"`         // free, starter, pro, etc.
+	CharLimit    int      `json:"char_limit"`
+	CheckedAt    string   `json:"checked_at"`
+}
+
+// TTSScore — оценка качества TTS-провайдера
+type TTSScore struct {
+	ProviderName  string  `json:"provider_name"`
+	OverallScore  float64 `json:"overall_score"`
+	FreeTierScore float64 `json:"free_tier_score"`
+	FeatureScore  float64 `json:"feature_score"`
+	LanguageScore float64 `json:"language_score"`
+	LatencyScore  float64 `json:"latency_score"`
+	HasFreeTier   bool    `json:"has_free_tier"`
+	CharLimit     int     `json:"char_limit"`
+	ScoredAt      string  `json:"scored_at"`
+}

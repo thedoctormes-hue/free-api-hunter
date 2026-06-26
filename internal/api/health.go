@@ -58,7 +58,7 @@ func (s *Server) handleHealthExtended(w http.ResponseWriter, r *http.Request) {
 
 	// Проверяем Orex proxy
 	orexClient := orex.NewClient("")
-	if orexClient.IsAvailable() {
+	if _, err := orexClient.GetModels(); err == nil {
 		status.OrexProxyOk = true
 	}
 

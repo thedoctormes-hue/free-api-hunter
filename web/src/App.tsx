@@ -6,6 +6,7 @@ import { DashboardPage } from '@/pages/dashboard'
 import { ProvidersPage } from '@/pages/providers'
 import { FindingsPage } from '@/pages/findings'
 import { StatsPage } from '@/pages/stats'
+import { TTSPage } from '@/pages/tts'
 import { NotFoundPage } from '@/pages/not-found'
 
 const queryClient = new QueryClient({
@@ -56,6 +57,8 @@ function App() {
         return <FindingsPage />
       case '/stats':
         return <StatsPage />
+      case '/tts':
+        return <TTSPage />
       default:
         return <NotFoundPage />
     }

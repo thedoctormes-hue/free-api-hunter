@@ -68,6 +68,15 @@
       "enabled": true,
       "priority": 2,
       "notes": "Гайды по получению кредитов. Новые программы появляются тут."
+    },
+    {
+      "id": "pollinations_api",
+      "type": "web_page",
+      "name": "Pollinations API",
+      "url": "https://gen.pollinations.ai/v1/models",
+      "enabled": true,
+      "priority": 1,
+      "notes": "OpenAI-совместимый API, 111 моделей. API key в vault. Бесплатные: openai, openai-fast, gpt-5.4-mini, qwen-coder, mistral-small-3.2, mistral, deepseek, gemma, grok, grok-4-20-reasoning, grok-large, kimi, llama, llama-scout, mistral-large, qwen-vision, step-3.5-flash"
     }
   ],
   "provider_pages": [
@@ -368,6 +377,46 @@
       "free_quota": "25,000 requests/month, 500/day/IP",
       "max_file_size": "1MB (free), 5MB (PRO)",
       "notes": "Free OCR API by a9t9 GmbH. 3 engines, 30+ languages. Key in vault/free-api-hunter/ocr-space/. Engine 3 has separate 2,500 quota on free tier."
+    },
+    {
+      "id": "pollinations",
+      "name": "Pollinations",
+      "url": "https://gen.pollinations.ai",
+      "docs_url": "https://gen.pollinations.ai/docs",
+      "credit_card": false,
+      "status": "verified",
+      "verified_by": "raven",
+      "models_count": 18,
+      "limits": {
+        "rpm": 10,
+        "note": "Бесплатные модели без кредитов, платные требуют pollen credits"
+      },
+      "models": [
+        "openai",
+        "openai-fast",
+        "gpt-5.4-mini",
+        "qwen-coder",
+        "mistral-small-3.2",
+        "mistral",
+        "deepseek",
+        "gemma",
+        "grok",
+        "grok-4-20-reasoning",
+        "grok-large",
+        "kimi",
+        "llama",
+        "llama-scout",
+        "mistral-large",
+        "qwen-vision",
+        "step-3.5-flash"
+      ],
+      "endpoints": {
+        "chat": "https://gen.pollinations.ai/v1/chat/completions",
+        "models": "https://gen.pollinations.ai/v1/models",
+        "image": "https://gen.pollinations.ai/v1/images/generations",
+        "image_legacy": "https://image.pollinations.ai/prompt/{prompt}"
+      },
+      "notes": "OpenAI-совместимый API. 18 бесплатных моделей из 111. API key бесплатный, регистрация на gen.pollinations.ai. Изображения через /v1/images/generations (base64) или image.pollinations.ai (direct)."
     }
   ],
   "ocr_sources": [

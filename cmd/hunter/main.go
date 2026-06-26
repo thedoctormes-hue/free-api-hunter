@@ -14,8 +14,10 @@ import (
 	"free-api-hunter/internal/filter"
 	"free-api-hunter/internal/models"
 	"free-api-hunter/internal/ocr"
+	"free-api-hunter/internal/pollinations"
 	"free-api-hunter/internal/scraper"
 	"free-api-hunter/internal/storage"
+	"free-api-hunter/internal/tts"
 	"free-api-hunter/internal/verifier"
 )
 
@@ -164,7 +166,40 @@ func main() {
 	// 6. Выводим результаты
 	printResults(rawFindings, findings, providers, *limit)
 
-	// 7. Сохраняем (если не dry-run)
+	// 6b. Pollinations pipeline — верификация и обогащение моделей
+	if *verify {
+		logger.Println("Testing Pollinations models...")
+		pollInfo, pollResults := pollinations.TestAllModels()
+		if pollInfo != nil {
+			pollProvider := pollinations.ToProvider(pollInfo)
+			// Обновляем или добавляем провайдера
+			updated := false
+			for i, p := range providers {
+				if p.Name == pollProvider.Name {
+					providers[i] = pollProvider
+					updated = true
+					break
+				}
+			}
+			if !updated {
+				providers = append(providers, pollProvider)
+			}
+			freeCount := len(pollInfo.ModelsFree)
+			paidCount := len(pollInfo.ModelsPaid)
+			logger.Printf("Pollinations: %d free, %d paid models", freeCount, paidCount)
+			_ = pollResults
+		}
+
+		// Image generation test
+		ok, msg := pollinations.VerifyImageGeneration()
+		if ok {
+			logger.Println("Pollinations image generation: ✅")
+		} else {
+			logger.Printf("Pollinations image generation: %s", msg)
+		}
+	}
+
+	// 6c. Сохраняем результаты (включая Pollinations)
 	if !*dryRun {
 		logger.Println("Saving results...")
 		if err := storage.SaveProviders(providers, ""); err != nil {
@@ -190,7 +225,13 @@ func main() {
 		runOCRPipeline(*noAlerts, *alertConfigPath)
 	}
 
-	// 8. Отправляем алерт (если не отключён)
+	// 8. TTS pipeline — верификация и скоринг TTS-провайдеров
+	if *verify {
+		logger.Println("Running TTS pipeline...")
+		runTTSPipeline(*noAlerts, *alertConfigPath)
+	}
+
+	// 9. Отправляем алерт (если не отключён)
 	if !*noAlerts {
 		alertCfg, err := alerter.LoadConfig(*alertConfigPath)
 		if err != nil {
@@ -367,6 +408,112 @@ func printResults(raw []models.Finding, filtered []models.Finding, providers []*
 		fmt.Printf("    Лимиты: %s\n", limitsStr)
 		fmt.Printf("    URL: %s\n", p.URL)
 		fmt.Println()
+	}
+}
+
+// runTTSPipeline — полный pipeline для TTS-провайдеров: верификация → скоринг → алерт
+func runTTSPipeline(noAlerts bool, alertConfigPath string) {
+	// 1. Загружаем конфиг TTS-провайдеров
+	ttsProviders, err := tts.LoadTTSSources("config/tts_sources.json")
+	if err != nil {
+		logger.Printf("TTS config not found (%v), skipping TTS pipeline", err)
+		return
+	}
+	logger.Printf("TTS: loaded %d providers from config", len(ttsProviders))
+
+	// 2. Верифицируем каждого провайдера
+	var verifyResults []*models.TTSVerifyResult
+	var scores []*models.TTSScore
+	for _, p := range ttsProviders {
+		logger.Printf("TTS: verifying %s...", p.Name)
+		result := tts.VerifyTTSKey(p)
+		verifyResults = append(verifyResults, result)
+
+		if result.IsActive {
+			logger.Printf("TTS: %s ✅ active (plan: %s, chars: %d)",
+				p.Name, result.Plan, result.CharLimit)
+		} else {
+			logger.Printf("TTS: %s ❌ inactive: %s", p.Name, result.Error)
+		}
+
+		// 3. Скоринг
+		score := tts.ScoreTTSProvider(p, result.IsActive)
+		scores = append(scores, score)
+		logger.Printf("TTS: %s score: %.0f%% (free:%.0f feat:%.0f lang:%.0f latency:%.0f)",
+			p.Name, score.OverallScore*100, score.FreeTierScore*100,
+			score.FeatureScore*100, score.LanguageScore*100, score.LatencyScore*100)
+	}
+
+	// 4. Сохраня
+	if len(ttsProviders) > 0 {
+		saveTTSData(ttsProviders, verifyResults, scores)
+	}
+
+	// 5. Вывод в stdout
+	fmt.Println()
+	fmt.Println(strings.Repeat("─", 40))
+	fmt.Println("TTS PROVIDERS")
+	fmt.Println(strings.Repeat("─", 40))
+	for i, r := range verifyResults {
+		status := "❌"
+		if r.IsActive {
+			status = "✅"
+		}
+		p := ttsProviders[i]
+		fmt.Printf("%s %s — %s\n", status, p.Name, r.Plan)
+		if r.IsActive {
+			fmt.Printf("   Voices: %d | Chars: %d/month\n", len(r.Voices), r.CharLimit)
+			if i < len(scores) {
+				fmt.Printf("   Score: %.0f%%\n", scores[i].OverallScore*100)
+			}
+		} else if r.Error != "" {
+			fmt.Printf("   Error: %s\n", r.Error)
+		}
+	}
+	fmt.Println(strings.Repeat("─", 40))
+
+	// 6. Алерт
+	if !noAlerts && len(scores) > 0 {
+		alertCfg, err := alerter.LoadConfig(alertConfigPath)
+		if err != nil {
+			logger.Printf("TTS alert: config not found (%v), skipping", err)
+		} else {
+			report := alerter.FormatTTSReport(verifyResults, scores, ttsProviders)
+			if err := alerter.SendTelegram(alertCfg, report); err != nil {
+				logger.Printf("TTS alert failed: %v", err)
+			} else {
+				logger.Println("TTS report alert sent")
+			}
+		}
+	}
+}
+
+// saveTTSData — сохранить TTS-провайдеров в JSON
+func saveTTSData(providers []*models.TTSProvider, results []*models.TTSVerifyResult, scores []*models.TTSScore) {
+	type ttsData struct {
+		Providers []*models.TTSProvider     `json:"providers"`
+		Results   []*models.TTSVerifyResult `json:"verify_results"`
+		Scores    []*models.TTSScore        `json:"scores"`
+		UpdatedAt string                `json:"updated_at"`
+	}
+
+	data := ttsData{
+		Providers: providers,
+		Results:   results,
+		Scores:    scores,
+		UpdatedAt: models.Now(),
+	}
+
+	jsonData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		logger.Printf("TTS: failed to marshal: %v", err)
+		return
+	}
+
+	if err := os.WriteFile("data/tts_providers.json", jsonData, 0644); err != nil {
+		logger.Printf("TTS: failed to save: %v", err)
+	} else {
+		logger.Println("TTS: saved to data/tts_providers.json")
 	}
 }
 

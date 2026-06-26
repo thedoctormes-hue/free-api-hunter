@@ -46,10 +46,16 @@ func NewServerWithDir(addr, dataDir string) *Server {
 }
 
 func (s *Server) routes() {
+	// LLM providers
 	s.mux.HandleFunc("/api/v1/providers", s.handleProviders)
 	s.mux.HandleFunc("/api/v1/providers/", s.handleProviderByID)
 	s.mux.HandleFunc("/api/v1/findings", s.handleFindings)
 	s.mux.HandleFunc("/api/v1/stats", s.handleStats)
+	// TTS providers
+	s.mux.HandleFunc("/api/v1/tts/providers", s.handleTTSProviders)
+	s.mux.HandleFunc("/api/v1/tts/providers/", s.handleTTSProviderByID)
+	s.mux.HandleFunc("/api/v1/tts/stats", s.handleTTSStats)
+	// Health & index
 	s.mux.HandleFunc("/health", s.handleHealth)
 	s.mux.HandleFunc("/", s.handleIndex)
 }
@@ -306,6 +312,112 @@ a{color:#58a6ff}
 <pre>curl http://localhost:8080/api/v1/providers?status=verified&credit_card=false</pre>
 </body>
 </html>`))
+}
+
+// ─── TTS Providers ───
+
+// ttsData — структура TTS-данных из файла
+type ttsData struct {
+	Providers []*models.TTSProvider     `json:"providers"`
+	Results   []*models.TTSVerifyResult `json:"verify_results"`
+	Scores    []*models.TTSScore        `json:"scores"`
+	UpdatedAt string                    `json:"updated_at"`
+}
+
+func (s *Server) loadTTSData() *ttsData {
+	path := filepath.Join(s.DataDir, "tts_providers.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var d ttsData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return nil
+	}
+	return &d
+}
+
+// handleTTSProviders — GET /api/v1/tts/providers
+func (s *Server) handleTTSProviders(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	data := s.loadTTSData()
+	if data == nil {
+		s.jsonErr(w, http.StatusNotFound, "TTS data not found. Run with --verify first.")
+		return
+	}
+
+	s.jsonOK(w, data.Providers, len(data.Providers))
+}
+
+// handleTTSProviderByID — GET /api/v1/tts/providers/{id}
+func (s *Server) handleTTSProviderByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	prefix := "/api/v1/tts/providers/"
+	id := strings.TrimPrefix(r.URL.Path, prefix)
+	if id == "" {
+		s.jsonErr(w, http.StatusBadRequest, "provider id required")
+		return
+	}
+
+	data := s.loadTTSData()
+	if data == nil {
+		s.jsonErr(w, http.StatusNotFound, "TTS data not found.")
+		return
+	}
+
+	for _, p := range data.Providers {
+		if p.Name == id {
+			s.jsonOK(w, p, 1)
+			return
+		}
+	}
+
+	s.jsonErr(w, http.StatusNotFound, "TTS provider not found")
+}
+
+// handleTTSStats — GET /api/v1/tts/stats
+func (s *Server) handleTTSStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	data := s.loadTTSData()
+	if data == nil {
+		s.jsonErr(w, http.StatusNotFound, "TTS data not found.")
+		return
+	}
+
+	stats := map[string]interface{}{
+		"providers_total": len(data.Providers),
+		"active_count":   0,
+		"free_tier_count": 0,
+		"total_voices":   0,
+		"updated_at":     data.UpdatedAt,
+	}
+
+	for _, r := range data.Results {
+		if r.IsActive {
+			stats["active_count"] = stats["active_count"].(int) + 1
+		}
+		stats["total_voices"] = stats["total_voices"].(int) + len(r.Voices)
+	}
+
+	for _, p := range data.Providers {
+		if p.FreeTier != nil && p.FreeTier.CharLimit > 0 {
+			stats["free_tier_count"] = stats["free_tier_count"].(int) + 1
+		}
+	}
+
+	s.jsonOK(w, stats, 0)
 }
 
 // ProvidersFromFile — загрузить провайдеров из файла (для тестов)
