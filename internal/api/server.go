@@ -89,6 +89,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/v1/providers/", s.handleProviderByID)
 	s.mux.HandleFunc("/api/v1/findings", s.handleFindings)
 	s.mux.HandleFunc("/api/v1/stats", s.handleStats)
+	// Scan history & scan trigger
+	s.mux.HandleFunc("/api/v1/scan-history", s.handleScanHistory)
+	s.mux.HandleFunc("/api/v1/scan", s.handleScan)
 	// TTS providers
 	s.mux.HandleFunc("/api/v1/tts/providers", s.handleTTSProviders)
 	s.mux.HandleFunc("/api/v1/tts/providers/", s.handleTTSProviderByID)
@@ -155,7 +158,7 @@ func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request) {
 	statusFilter := r.URL.Query().Get("status")
 	creditCardFilter := r.URL.Query().Get("credit_card")
 
-	providers, err := storage.LoadProviders(filepath.Join(s.DataDir, "providers.json"))
+	providers, err := storage.LoadProviders("")
 	if err != nil {
 		s.jsonErr(w, http.StatusInternalServerError, fmt.Sprintf("load error: %v", err))
 		return
@@ -194,7 +197,7 @@ func (s *Server) handleProviderByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	providers, err := storage.LoadProviders(filepath.Join(s.DataDir, "providers.json"))
+	providers, err := storage.LoadProviders("")
 	if err != nil {
 		s.jsonErr(w, http.StatusInternalServerError, fmt.Sprintf("load error: %v", err))
 		return
@@ -224,7 +227,7 @@ func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
 
 	sourceFilter := r.URL.Query().Get("source")
 
-	findings, err := storage.LoadFindings(filepath.Join(s.DataDir, "findings.json"))
+	findings, err := storage.LoadFindings("")
 	if err != nil {
 		s.jsonErr(w, http.StatusInternalServerError, fmt.Sprintf("load error: %v", err))
 		return
@@ -254,8 +257,8 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	providers, _ := storage.LoadProviders(filepath.Join(s.DataDir, "providers.json"))
-	findings, _ := storage.LoadFindings(filepath.Join(s.DataDir, "findings.json"))
+	providers, _ := storage.LoadProviders("")
+	findings, _ := storage.LoadFindings("")
 
 	stats := map[string]interface{}{
 		"providers_total":    0,
@@ -296,6 +299,40 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	s.jsonOK(w, stats, 0)
 }
 
+// handleScanHistory — GET /api/v1/scan-history — история сканирований
+func (s *Server) handleScanHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	limit := 20
+	if l := r.URL.Query().Get("limit"); l != "" {
+		fmt.Sscanf(l, "%d", &limit)
+	}
+
+	history, err := storage.LoadScanHistory(limit)
+	if err != nil {
+		s.jsonErr(w, http.StatusInternalServerError, fmt.Sprintf("load error: %v", err))
+		return
+	}
+
+	s.jsonOK(w, history, len(history))
+}
+
+// handleScan — POST /api/v1/scan — запустить сканирование (заглушка)
+func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	s.jsonOK(w, map[string]string{
+		"status": "not_implemented",
+		"message": "Scan trigger via API is not yet implemented. Use CLI mode.",
+	}, 0)
+}
+
 // handleHealth — GET /health — health check
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	s.jsonOK(w, map[string]string{
@@ -330,7 +367,7 @@ a{color:#58a6ff}
 </style>
 </head>
 <body>
-<h1>🔍 Free API Hunter</h1>
+<h1>&#128269; Free API Hunter</h1>
 <p>API для доступа к каталогу бесплатных LLM API.</p>
 
 <h2>Endpoints</h2>
@@ -339,6 +376,8 @@ a{color:#58a6ff}
 <div class="endpoint"><span class="method">GET</span><span class="path">/api/v1/providers/{id}</span><span>— Провайдер по ID</span></div>
 <div class="endpoint"><span class="method">GET</span><span class="path"><a href="/api/v1/findings">/api/v1/findings</a></span><span>— Список находок</span></div>
 <div class="endpoint"><span class="method">GET</span><span class="path"><a href="/api/v1/stats">/api/v1/stats</a></span><span>— Статистика</span></div>
+<div class="endpoint"><span class="method">GET</span><span class="path"><a href="/api/v1/scan-history">/api/v1/scan-history</a></span><span>— История сканирований</span></div>
+<div class="endpoint"><span class="method">POST</span><span class="path">/api/v1/scan</span><span>— Запустить сканирование</span></div>
 
 <h2>Параметры фильтрации</h2>
 <p><code>?status=verified</code> — фильтр по статусу (verified, confirmed, claimed, unverified)</p>
@@ -419,6 +458,7 @@ func (s *Server) handleTTSProviderByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.jsonErr(w, http.StatusNotFound, "TTS provider not found")
+	return
 }
 
 // handleTTSStats — GET /api/v1/tts/stats

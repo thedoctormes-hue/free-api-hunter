@@ -1,8 +1,9 @@
 // TTS API клиент — запросы к /api/v1/tts/*
+import { fetchJSON } from './client';
 
 export interface TTSProvider {
   name: string;
-  url: string;
+  url?: string;
   api_key_url: string;
   credit_card: boolean;
   status: string;
@@ -53,25 +54,14 @@ export interface TTSStats {
   updated_at: string;
 }
 
-const BASE = '/api/v1/tts';
-
 export async function fetchTTSProviders(): Promise<TTSProvider[]> {
-  const res = await fetch(`${BASE}/providers`);
-  if (!res.ok) throw new Error(`TTS providers fetch failed: ${res.status}`);
-  const data = await res.json();
-  return data.data || [];
+  return fetchJSON<TTSProvider[]>('/api/v1/tts/providers');
 }
 
 export async function fetchTTSProviderByID(id: string): Promise<TTSProvider> {
-  const res = await fetch(`${BASE}/providers/${encodeURIComponent(id)}`);
-  if (!res.ok) throw new Error(`TTS provider fetch failed: ${res.status}`);
-  const data = await res.json();
-  return data.data;
+  return fetchJSON<TTSProvider>(`/api/v1/tts/providers/${encodeURIComponent(id)}`);
 }
 
 export async function fetchTTSStats(): Promise<TTSStats> {
-  const res = await fetch(`${BASE}/stats`);
-  if (!res.ok) throw new Error(`TTS stats fetch failed: ${res.status}`);
-  const data = await res.json();
-  return data.data;
+  return fetchJSON<TTSStats>('/api/v1/tts/stats');
 }

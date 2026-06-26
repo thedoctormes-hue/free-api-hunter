@@ -8,6 +8,9 @@ status: active
 
 # Free API Hunter
 
+[![CI](https://github.com/DoctorM-Ai/free-api-hunter/actions/workflows/ci.yml/badge.svg)](https://github.com/DoctorM-Ai/free-api-hunter/actions/workflows/ci.yml)
+[![Release](https://github.com/DoctorM-Ai/free-api-hunter/actions/workflows/release.yml/badge.svg)](https://github.com/DoctorM-Ai/free-api-hunter/actions/workflows/release.yml)
+
 > **Владелец:** DoctorM&Ai | **Статус:** active | **Версия:** v0.7.0
 
 ## Веб-интерфейс
@@ -30,23 +33,23 @@ status: active
 ```bash
 cd projects/free-api-hunter
 
-# Сборка
-go build -ldflags "-X main.Version=$(git describe --tags --always)" -o bin/hunter cmd/hunter/main.go
+# Сборка (через Makefile)
+make build
 
 # Запуск поиска (dry-run)
-./bin/hunter --dry-run --limit 20
+./hunter --dry-run --limit 20
 
 # Верификация провайдеров
-./bin/hunter --verify
+./hunter --verify
 
 # Полный цикл
-./bin/hunter
+./hunter
 
 # Конкретный источник
-./bin/hunter --source hackernews
+./hunter --source hackernews
 
 # Без алертов
-./bin/hunter --no-alerts
+./hunter --no-alerts
 ```
 
 ## Архитектура
@@ -123,17 +126,61 @@ echo -n "sk_ключ_2" > /root/LabDoctorM/vault/free-api-hunter/elevenlabs/api.
 ## Разработка
 
 ```bash
-# Тесты
-go test ./... -count=1 -v
-
-# С покрытием
-go test ./... -cover
-
-# Конкретный пакет
-go test ./internal/filter/ -v
+# Тесты (через Makefile)
+make test
 
 # Линтер
+make lint
+
+# Вручную (без Makefile)
+go test ./... -count=1 -v
+go test ./... -cover
+go test ./internal/filter/ -v
 go vet ./...
+```
+
+## CI/CD
+
+### GitHub Actions
+
+| Workflow | Описание |
+|----------|----------|
+| **CI** (`.github/workflows/ci.yml`) | Запускается на push/PR: lint (golangci-lint), test (race + coverage), build, Docker build |
+| **Release** (`.github/workflows/release.yml`) | Запускается на tag `v*`: сборка для linux/amd64, linux/arm64, darwin/amd64, загрузка в GitHub Release |
+
+### Локальная разработка
+
+```bash
+# Сборка
+make build
+
+# Тесты с coverage
+make test
+
+# Линтер
+make lint
+
+# Docker образ
+make docker
+
+# Запуск API
+make run
+
+# Очистка
+make clean
+```
+
+### Docker
+
+```bash
+# Сборка образа
+docker build -t free-api-hunter:latest .
+
+# Запуск контейнера
+docker run -d -p 8090:8090 -v ./data:/app/data free-api-hunter:latest
+
+# Или через docker-compose
+docker compose up -d
 ```
 
 ## Деплой

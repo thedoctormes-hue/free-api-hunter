@@ -1,0 +1,62 @@
+run:
+  timeout: 5m
+  go: "1.25"
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gofmt
+    - goimports
+    - misspell
+    - revive
+    - gocyclo
+    - dupl
+    - goconst
+    - unparam
+    - bodyclose
+    - noctx
+    - dogsled
+    - gosec
+    - whitespace
+    - wsl
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  dupl:
+    threshold: 150
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  revive:
+    rules:
+      - name: exported
+        arguments:
+          - "checkPrivateReceivers"
+          - "disableStutteringCheck"
+      - name: package-comments
+        severity: warning
+        disabled: true
+  gosec:
+    excludes:
+      - G104 # errcheck handles unchecked errors
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 50
+  max-same-issues: 5
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - dupl
+        - gosec
+        - wsl
+    - path: internal/database/
+      linters:
+        - gosec

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -280,7 +281,9 @@ type FreeModel struct {
 func ToFreeModels(models []OrexModel) []FreeModel {
 	var result []FreeModel
 	for _, m := range models {
-		if m.Pricing.Prompt == "0" && m.Pricing.Completion == "0" {
+			promptPrice, _ := strconv.ParseFloat(m.Pricing.Prompt, 64)
+		completionPrice, _ := strconv.ParseFloat(m.Pricing.Completion, 64)
+		if promptPrice == 0 && completionPrice == 0 {
 			provider := splitProvider(m.ID)
 			result = append(result, FreeModel{
 				ID:            m.ID,

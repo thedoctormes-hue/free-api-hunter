@@ -23,10 +23,9 @@ vendor/
 .vscode/
 
 # Project binaries
-bin/hunter
+bin/
 hunter
 hunter_v2
-hunter_check.sh
 
 # Runtime data (gitignored entirely)
 data/
@@ -34,7 +33,14 @@ data/
 # OS
 .DS_Store
 Thumbs.db
+
+# Secrets
 configs/manus-keys.json
-output/
+configs/*.key
+
+# Python cache
 __pycache__/
 *.pyc
+
+# Output
+output/

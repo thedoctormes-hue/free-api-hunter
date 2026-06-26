@@ -269,7 +269,7 @@ func (p *KeyPool) SaveState(path string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0600)
 }
 
 // Reload — перезагрузить пул из конфига (для добавления новых ключей)

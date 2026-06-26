@@ -1,18 +1,39 @@
 package storage
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
+	"free-api-hunter/internal/database"
 	"free-api-hunter/internal/models"
+	_ "modernc.org/sqlite"
 )
 
-func TestSaveAndLoadProviders(t *testing.T) {
+func initTestDB(t *testing.T) {
+	t.Helper()
 	tmpDir := t.TempDir()
-	origDir := DataDir
 	DataDir = tmpDir
-	defer func() { DataDir = origDir }()
+	if err := database.Init(tmpDir); err != nil {
+		t.Fatalf("failed to init test db: %v", err)
+	}
+	// Verify schema
+	db := database.DB()
+	if db != nil {
+		var seq, name, file string
+		db.QueryRow("PRAGMA database_list").Scan(&seq, &name, &file)
+		t.Logf("initTestDB db=%v file=%s tmpDir=%s", db, file, tmpDir)
+	}
+}
+
+func cleanupDB(t *testing.T) {
+	t.Helper()
+	t.Logf("cleanupDB: closing database")
+	database.Close()
+}
+
+func TestSaveAndLoadProviders(t *testing.T) {
+	initTestDB(t)
+	defer cleanupDB(t)
 
 	providers := []*models.Provider{
 		{
@@ -25,8 +46,7 @@ func TestSaveAndLoadProviders(t *testing.T) {
 		},
 	}
 
-	err := SaveProviders(providers, "")
-	if err != nil {
+	if err := SaveProviders(providers, ""); err != nil {
 		t.Fatalf("SaveProviders failed: %v", err)
 	}
 
@@ -47,10 +67,8 @@ func TestSaveAndLoadProviders(t *testing.T) {
 }
 
 func TestSaveAndLoadFindings(t *testing.T) {
-	tmpDir := t.TempDir()
-	origDir := DataDir
-	DataDir = tmpDir
-	defer func() { DataDir = origDir }()
+	initTestDB(t)
+	defer cleanupDB(t)
 
 	findings := []*models.Finding{
 		{
@@ -62,8 +80,7 @@ func TestSaveAndLoadFindings(t *testing.T) {
 		},
 	}
 
-	err := SaveFindings(findings, "")
-	if err != nil {
+	if err := SaveFindings(findings, ""); err != nil {
 		t.Fatalf("SaveFindings failed: %v", err)
 	}
 
@@ -81,10 +98,8 @@ func TestSaveAndLoadFindings(t *testing.T) {
 }
 
 func TestSaveAndLoadKeyPool(t *testing.T) {
-	tmpDir := t.TempDir()
-	origDir := DataDir
-	DataDir = tmpDir
-	defer func() { DataDir = origDir }()
+	initTestDB(t)
+	defer cleanupDB(t)
 
 	keys := []*models.APIKey{
 		{
@@ -95,8 +110,7 @@ func TestSaveAndLoadKeyPool(t *testing.T) {
 		},
 	}
 
-	err := SaveKeyPool(keys, "")
-	if err != nil {
+	if err := SaveKeyPool(keys, ""); err != nil {
 		t.Fatalf("SaveKeyPool failed: %v", err)
 	}
 
@@ -114,10 +128,8 @@ func TestSaveAndLoadKeyPool(t *testing.T) {
 }
 
 func TestLoadNonexistent(t *testing.T) {
-	tmpDir := t.TempDir()
-	origDir := DataDir
-	DataDir = tmpDir
-	defer func() { DataDir = origDir }()
+	initTestDB(t)
+	defer cleanupDB(t)
 
 	providers, err := LoadProviders("")
 	if err != nil {
@@ -137,21 +149,90 @@ func TestLoadNonexistent(t *testing.T) {
 }
 
 func TestEnsureDir(t *testing.T) {
-	tmpDir := filepath.Join(t.TempDir(), "subdir")
-	origDir := DataDir
-	DataDir = tmpDir
-	defer func() { DataDir = origDir }()
-
+	DataDir = filepath.Join(t.TempDir(), "subdir")
 	err := EnsureDir()
 	if err != nil {
 		t.Fatalf("EnsureDir failed: %v", err)
 	}
+}
 
-	info, err := os.Stat(tmpDir)
-	if err != nil {
-		t.Fatalf("Stat failed: %v", err)
+func TestScanHistory(t *testing.T) {
+	initTestDB(t)
+	defer cleanupDB(t)
+
+	if err := SaveScanHistory(10, 5, 3, 2); err != nil {
+		t.Fatalf("SaveScanHistory failed: %v", err)
 	}
-	if !info.IsDir() {
-		t.Error("EnsureDir should create a directory")
+	if err := SaveScanHistory(20, 8, 4, 3); err != nil {
+		t.Fatalf("SaveScanHistory failed: %v", err)
+	}
+
+	history, err := LoadScanHistory(10)
+	if err != nil {
+		t.Fatalf("LoadScanHistory failed: %v", err)
+	}
+
+	if len(history) != 2 {
+		t.Fatalf("Expected 2 history entries, got %d", len(history))
+	}
+
+	// Most recent first
+	if history[0]["raw_count"].(int) != 20 {
+		t.Errorf("Expected raw_count=20, got %v", history[0]["raw_count"])
+	}
+}
+
+func TestProviderModelsRoundTrip(t *testing.T) {
+	initTestDB(t)
+	defer cleanupDB(t)
+
+	providers := []*models.Provider{
+		{
+			Name:   "TestWithModels",
+			Models: []string{"gpt-4", "claude-3"},
+			Status: models.StatusVerified,
+		},
+	}
+
+	if err := SaveProviders(providers, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := LoadProviders("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(loaded[0].Models) != 2 {
+		t.Fatalf("Expected 2 models, got %d", len(loaded[0].Models))
+	}
+}
+
+func TestProviderLastVerified(t *testing.T) {
+	initTestDB(t)
+	defer cleanupDB(t)
+
+	now := "2026-06-26T00:00:00Z"
+	providers := []*models.Provider{
+		{
+			Name:         "WithVerified",
+			LastVerified: &now,
+		},
+	}
+
+	if err := SaveProviders(providers, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := LoadProviders("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if loaded[0].LastVerified == nil {
+		t.Fatal("LastVerified should not be nil")
+	}
+	if *loaded[0].LastVerified != now {
+		t.Errorf("Expected last_verified=%s, got %s", now, *loaded[0].LastVerified)
 	}
 }

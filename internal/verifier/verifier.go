@@ -183,6 +183,8 @@ func VerifyAPIKey(key *models.APIKey) *KeyVerifyResult {
 							if mi, ok := m.(map[string]interface{}); ok {
 								if id, ok := mi["id"].(string); ok {
 									result.Models = append(result.Models, id)
+							} else if modelID, ok := mi["model_id"].(string); ok {
+								result.Models = append(result.Models, modelID)
 								}
 							}
 						}
@@ -266,6 +268,8 @@ func ExtractKeyInfo(key *models.APIKey) map[string]interface{} {
 			if mi, ok := m.(map[string]interface{}); ok {
 				if id, ok := mi["id"].(string); ok {
 					models = append(models, id)
+					} else if modelID, ok := mi["model_id"].(string); ok {
+						models = append(models, modelID)
 				}
 				if ctx, ok := mi["context_length"].(float64); ok {
 					if id, ok := mi["id"].(string); ok {

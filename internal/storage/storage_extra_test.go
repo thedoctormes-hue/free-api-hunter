@@ -4,13 +4,24 @@ import (
 	"path/filepath"
 	"testing"
 
+	"free-api-hunter/internal/database"
 	"free-api-hunter/internal/models"
 	"free-api-hunter/internal/orex"
+	_ "modernc.org/sqlite"
 )
 
+func initTestDBExtra(t *testing.T) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	DataDir = tmpDir
+	if err := database.Init(tmpDir); err != nil {
+		t.Fatalf("failed to init test db: %v", err)
+	}
+}
+
 func TestSaveAndLoadOrexCache(t *testing.T) {
-	dir := t.TempDir()
-	DataDir = dir
+	initTestDBExtra(t)
+	defer database.Close()
 
 	cache := &OrexCache{
 		FreeModels: []orex.FreeModel{
@@ -22,6 +33,7 @@ func TestSaveAndLoadOrexCache(t *testing.T) {
 		},
 	}
 
+	dir := t.TempDir()
 	if err := SaveOrexCache(cache, filepath.Join(dir, "orex_cache.json")); err != nil {
 		t.Fatalf("SaveOrexCache error: %v", err)
 	}
@@ -45,9 +57,10 @@ func TestSaveAndLoadOrexCache(t *testing.T) {
 }
 
 func TestLoadOrexCacheNonexistent(t *testing.T) {
-	dir := t.TempDir()
-	DataDir = dir
+	initTestDBExtra(t)
+	defer database.Close()
 
+	dir := t.TempDir()
 	loaded, err := LoadOrexCache(filepath.Join(dir, "nonexistent.json"))
 	if err != nil {
 		t.Fatalf("expected nil error for nonexistent file, got %v", err)

@@ -101,6 +101,12 @@ func main() {
 
 	logger.Printf("Free API Hunter %s starting...", Version)
 
+	// 0. Init database
+	if err := storage.InitDB(""); err != nil {
+		logger.Fatalf("Database init failed: %v", err)
+	}
+	defer storage.CloseDB()
+
 	// 1. Load all config
 	config, filterConfig, err := loadAllConfig(*source)
 	if err != nil {
@@ -135,6 +141,13 @@ func main() {
 	}
 
 	logger.Println("Scan completed.")
+
+	// Save scan history
+	if !*dryRun {
+		if err := storage.SaveScanHistory(len(rawFindings), len(findings), len(providers), 0); err != nil {
+			logger.Printf("Failed to save scan history: %v", err)
+		}
+	}
 
 	// 7. OCR pipeline
 	if *verify {

@@ -124,6 +124,7 @@ func (e *Engine) applyFilters(f *models.Finding) {
 	// 1. Дедупликация
 	fp := f.Fingerprint()
 	if e.seenFingerprints[fp] {
+		f.IsDuplicate = true
 		f.FilteredOut = true
 		f.FilterReason = "duplicate"
 		return

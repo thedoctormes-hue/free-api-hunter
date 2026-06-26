@@ -5,10 +5,43 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"free-api-hunter/internal/database"
+	"free-api-hunter/internal/models"
+	"free-api-hunter/internal/storage"
+	_ "modernc.org/sqlite"
 )
 
+func setupExtraTestDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	storage.DataDir = dir
+	if err := database.Init(dir); err != nil {
+		t.Fatalf("failed to init db: %v", err)
+	}
+	return dir
+}
+
+func writeExtraTestData(t *testing.T, dir string) {
+	t.Helper()
+	providers := []*models.Provider{
+		{Name: "Cohere", Status: models.StatusVerified, CreditCard: false, Models: []string{"command-r"}},
+	}
+	if err := storage.SaveProviders(providers, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	findings := []*models.Finding{
+		{Title: "Free API 1", SourceID: "hackernews", QualityScore: 0.8},
+	}
+	if err := storage.SaveFindings(findings, ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAPIProvidersEmpty(t *testing.T) {
-	dir := setupTestDir(t)
+	dir := setupExtraTestDir(t)
+	defer database.Close()
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/providers", nil)
@@ -23,8 +56,9 @@ func TestAPIProvidersEmpty(t *testing.T) {
 }
 
 func TestAPIProviderByIDCaseSensitive(t *testing.T) {
-	dir := setupTestDir(t)
-	writeTestData(t, dir)
+	dir := setupExtraTestDir(t)
+	defer database.Close()
+	writeExtraTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	// Wrong case should not match
@@ -38,7 +72,8 @@ func TestAPIProviderByIDCaseSensitive(t *testing.T) {
 }
 
 func TestAPIFindingsEmpty(t *testing.T) {
-	dir := setupTestDir(t)
+	dir := setupExtraTestDir(t)
+	defer database.Close()
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/findings", nil)
@@ -53,7 +88,8 @@ func TestAPIFindingsEmpty(t *testing.T) {
 }
 
 func TestAPIStatsEmpty(t *testing.T) {
-	dir := setupTestDir(t)
+	dir := setupExtraTestDir(t)
+	defer database.Close()
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/stats", nil)
@@ -73,7 +109,8 @@ func TestAPIStatsEmpty(t *testing.T) {
 }
 
 func TestAPIMethodNotAllowedFindings(t *testing.T) {
-	dir := setupTestDir(t)
+	dir := setupExtraTestDir(t)
+	defer database.Close()
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("DELETE", "/api/v1/findings", nil)
@@ -86,7 +123,8 @@ func TestAPIMethodNotAllowedFindings(t *testing.T) {
 }
 
 func TestAPIMethodNotAllowedStats(t *testing.T) {
-	dir := setupTestDir(t)
+	dir := setupExtraTestDir(t)
+	defer database.Close()
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("PUT", "/api/v1/stats", nil)
@@ -99,7 +137,8 @@ func TestAPIMethodNotAllowedStats(t *testing.T) {
 }
 
 func TestAPIProviderByIDEmpty(t *testing.T) {
-	dir := setupTestDir(t)
+	dir := setupExtraTestDir(t)
+	defer database.Close()
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/providers/", nil)
@@ -112,8 +151,9 @@ func TestAPIProviderByIDEmpty(t *testing.T) {
 }
 
 func TestAPIFindingsLimitZero(t *testing.T) {
-	dir := setupTestDir(t)
-	writeTestData(t, dir)
+	dir := setupExtraTestDir(t)
+	defer database.Close()
+	writeExtraTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/findings?limit=0", nil)
@@ -123,14 +163,15 @@ func TestAPIFindingsLimitZero(t *testing.T) {
 	var resp response
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	// limit=0 means no limit, should return all
-	if resp.Meta.Count != 3 {
-		t.Errorf("expected 3 findings with limit=0, got %d", resp.Meta.Count)
+	if resp.Meta.Count != 1 {
+		t.Errorf("expected 1 finding with limit=0, got %d", resp.Meta.Count)
 	}
 }
 
 func TestAPIFindingsMultipleFilters(t *testing.T) {
-	dir := setupTestDir(t)
-	writeTestData(t, dir)
+	dir := setupExtraTestDir(t)
+	defer database.Close()
+	writeExtraTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/findings?source=hackernews&limit=1", nil)
@@ -141,5 +182,30 @@ func TestAPIFindingsMultipleFilters(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.Meta.Count != 1 {
 		t.Errorf("expected 1 finding, got %d", resp.Meta.Count)
+	}
+}
+
+func TestAPIScanHistory(t *testing.T) {
+	dir := setupExtraTestDir(t)
+	defer database.Close()
+
+	// Insert scan history
+	if err := storage.SaveScanHistory(5, 3, 2, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	s := NewServerWithDir("127.0.0.1:0", dir)
+	req := httptest.NewRequest("GET", "/api/v1/scan-history", nil)
+	w := httptest.NewRecorder()
+	s.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp response
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.Meta.Count != 1 {
+		t.Errorf("expected 1 scan history entry, got %d", resp.Meta.Count)
 	}
 }

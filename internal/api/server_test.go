@@ -5,17 +5,22 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"testing"
 
+	"free-api-hunter/internal/database"
 	"free-api-hunter/internal/models"
 	"free-api-hunter/internal/storage"
+	_ "modernc.org/sqlite"
 )
 
 func setupTestDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	storage.DataDir = dir
+	// Init SQLite in the same dir
+	if err := database.Init(dir); err != nil {
+		t.Fatalf("failed to init db: %v", err)
+	}
 	return dir
 }
 
@@ -27,7 +32,7 @@ func writeTestData(t *testing.T, dir string) {
 		{Name: "Groq", Status: models.StatusVerified, CreditCard: false, Models: []string{"llama-3.3-70b"}},
 		{Name: "PaidAPI", Status: models.StatusClaimed, CreditCard: true, Models: []string{"gpt-4"}},
 	}
-	if err := storage.SaveProviders(providers, filepath.Join(dir, "providers.json")); err != nil {
+	if err := storage.SaveProviders(providers, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -36,13 +41,19 @@ func writeTestData(t *testing.T, dir string) {
 		{Title: "Free API 2", SourceID: "github", QualityScore: 0.6},
 		{Title: "Free API 3", SourceID: "hackernews", QualityScore: 0.4},
 	}
-	if err := storage.SaveFindings(findings, filepath.Join(dir, "findings.json")); err != nil {
+	if err := storage.SaveFindings(findings, ""); err != nil {
 		t.Fatal(err)
 	}
 }
 
+func cleanupDB(t *testing.T) {
+	t.Helper()
+	database.Close()
+}
+
 func TestHealth(t *testing.T) {
 	dir := setupTestDir(t)
+	defer cleanupDB(t)
 	writeTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
@@ -65,6 +76,7 @@ func TestHealth(t *testing.T) {
 
 func TestListProviders(t *testing.T) {
 	dir := setupTestDir(t)
+	defer cleanupDB(t)
 	writeTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
@@ -87,6 +99,7 @@ func TestListProviders(t *testing.T) {
 
 func TestFilterProvidersByStatus(t *testing.T) {
 	dir := setupTestDir(t)
+	defer cleanupDB(t)
 	writeTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
@@ -103,6 +116,7 @@ func TestFilterProvidersByStatus(t *testing.T) {
 
 func TestFilterProvidersNoCreditCard(t *testing.T) {
 	dir := setupTestDir(t)
+	defer cleanupDB(t)
 	writeTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
@@ -119,6 +133,7 @@ func TestFilterProvidersNoCreditCard(t *testing.T) {
 
 func TestGetProviderByID(t *testing.T) {
 	dir := setupTestDir(t)
+	defer cleanupDB(t)
 	writeTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
@@ -140,6 +155,7 @@ func TestGetProviderByID(t *testing.T) {
 
 func TestGetProviderNotFound(t *testing.T) {
 	dir := setupTestDir(t)
+	defer cleanupDB(t)
 	writeTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
@@ -154,8 +170,12 @@ func TestGetProviderNotFound(t *testing.T) {
 
 func TestListFindings(t *testing.T) {
 	dir := setupTestDir(t)
+	defer cleanupDB(t)
 	writeTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
+	defer cleanupDB(t)
+	writeTestData(t, dir)
+	_ = writeTestData
 
 	req := httptest.NewRequest("GET", "/api/v1/findings", nil)
 	w := httptest.NewRecorder()
@@ -170,6 +190,7 @@ func TestListFindings(t *testing.T) {
 
 func TestFilterFindingsBySource(t *testing.T) {
 	dir := setupTestDir(t)
+	defer cleanupDB(t)
 	writeTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
@@ -191,6 +212,7 @@ func TestFilterFindingsBySource(t *testing.T) {
 
 func TestFindingsLimit(t *testing.T) {
 	dir := setupTestDir(t)
+	defer cleanupDB(t)
 	writeTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
@@ -207,6 +229,7 @@ func TestFindingsLimit(t *testing.T) {
 
 func TestStats(t *testing.T) {
 	dir := setupTestDir(t)
+	defer cleanupDB(t)
 	writeTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
@@ -231,6 +254,7 @@ func TestStats(t *testing.T) {
 
 func TestMethodNotAllowed(t *testing.T) {
 	dir := setupTestDir(t)
+	defer cleanupDB(t)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("POST", "/api/v1/providers", nil)
@@ -244,6 +268,7 @@ func TestMethodNotAllowed(t *testing.T) {
 
 func TestNotFound(t *testing.T) {
 	dir := setupTestDir(t)
+	defer cleanupDB(t)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/nonexistent", nil)
@@ -257,6 +282,7 @@ func TestNotFound(t *testing.T) {
 
 func TestIndexPage(t *testing.T) {
 	dir := setupTestDir(t)
+	defer cleanupDB(t)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -272,5 +298,5 @@ func TestIndexPage(t *testing.T) {
 	}
 }
 
-// Утилита для подавления предупреждения о неиспользуемом импорте
+// Suppress unused import warning
 var _ = os.Remove
