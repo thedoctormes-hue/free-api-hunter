@@ -1,0 +1,17 @@
+title = "LabDoctorM gitleaks config"
+
+[allowlist]
+  description = "Allowed patterns"
+  paths = [
+    '''gitleaks\.toml''',
+    '''(.*?)(jpg|gif|doc|pdf|bin|mp4|png|svg|ico|woff|ttf|eot)$''',
+    '''(.*?)(test|spec|mock|fixture|seed)(.*?)''',
+    '''\.env\.example''',
+    '''\.env\.sample'''
+  ]
+
+[[rules]]
+  id = "generic-api-key"
+  description = "Generic API Key"
+  regex = '''(?i)(api[_-]?key|apikey|access[_-]?token|bearer|jwt|session[_-]?token)[\s]*[:=][\s]*['"]?[a-zA-Z0-9_\-]{20,}['"]?'''
+  tags = ["api-key", "generic"]

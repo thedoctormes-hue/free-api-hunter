@@ -16,18 +16,10 @@ func initTestDB(t *testing.T) {
 	if err := database.Init(tmpDir); err != nil {
 		t.Fatalf("failed to init test db: %v", err)
 	}
-	// Verify schema
-	db := database.DB()
-	if db != nil {
-		var seq, name, file string
-		db.QueryRow("PRAGMA database_list").Scan(&seq, &name, &file)
-		t.Logf("initTestDB db=%v file=%s tmpDir=%s", db, file, tmpDir)
-	}
 }
 
 func cleanupDB(t *testing.T) {
 	t.Helper()
-	t.Logf("cleanupDB: closing database")
 	database.Close()
 }
 
