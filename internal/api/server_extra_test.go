@@ -20,7 +20,7 @@ func init() {
 	allowedAPIKeys = []string{testAPIKey}
 }
 
-func setupExtraTestDir(t *testing.T) string {
+func setupTestDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	storage.DataDir = dir
@@ -30,7 +30,7 @@ func setupExtraTestDir(t *testing.T) string {
 	return dir
 }
 
-func writeExtraTestData(t *testing.T, dir string) {
+func writeTestData(t *testing.T, dir string) {
 	t.Helper()
 	providers := []*models.Provider{
 		{Name: "Cohere", Status: models.StatusVerified, CreditCard: false, Models: []string{"command-r"}},
@@ -48,7 +48,7 @@ func writeExtraTestData(t *testing.T, dir string) {
 }
 
 func TestAPIProvidersEmpty(t *testing.T) {
-	dir := setupExtraTestDir(t)
+	dir := setupTestDir(t)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/providers", nil)
@@ -64,8 +64,8 @@ func TestAPIProvidersEmpty(t *testing.T) {
 }
 
 func TestAPIProviderByIDCaseSensitive(t *testing.T) {
-	dir := setupExtraTestDir(t)
-	writeExtraTestData(t, dir)
+	dir := setupTestDir(t)
+	writeTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	// Wrong case should not match
@@ -80,7 +80,7 @@ func TestAPIProviderByIDCaseSensitive(t *testing.T) {
 }
 
 func TestAPIFindingsEmpty(t *testing.T) {
-	dir := setupExtraTestDir(t)
+	dir := setupTestDir(t)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/findings", nil)
@@ -96,7 +96,7 @@ func TestAPIFindingsEmpty(t *testing.T) {
 }
 
 func TestAPIStatsEmpty(t *testing.T) {
-	dir := setupExtraTestDir(t)
+	dir := setupTestDir(t)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/stats", nil)
@@ -117,7 +117,7 @@ func TestAPIStatsEmpty(t *testing.T) {
 }
 
 func TestAPIMethodNotAllowedFindings(t *testing.T) {
-	dir := setupExtraTestDir(t)
+	dir := setupTestDir(t)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("DELETE", "/api/v1/findings", nil)
@@ -131,7 +131,7 @@ func TestAPIMethodNotAllowedFindings(t *testing.T) {
 }
 
 func TestAPIMethodNotAllowedStats(t *testing.T) {
-	dir := setupExtraTestDir(t)
+	dir := setupTestDir(t)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("PUT", "/api/v1/stats", nil)
@@ -145,7 +145,7 @@ func TestAPIMethodNotAllowedStats(t *testing.T) {
 }
 
 func TestAPIProviderByIDEmpty(t *testing.T) {
-	dir := setupExtraTestDir(t)
+	dir := setupTestDir(t)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/providers/", nil)
@@ -159,8 +159,8 @@ func TestAPIProviderByIDEmpty(t *testing.T) {
 }
 
 func TestAPIFindingsLimitZero(t *testing.T) {
-	dir := setupExtraTestDir(t)
-	writeExtraTestData(t, dir)
+	dir := setupTestDir(t)
+	writeTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/findings?limit=0", nil)
@@ -177,8 +177,8 @@ func TestAPIFindingsLimitZero(t *testing.T) {
 }
 
 func TestAPIFindingsMultipleFilters(t *testing.T) {
-	dir := setupExtraTestDir(t)
-	writeExtraTestData(t, dir)
+	dir := setupTestDir(t)
+	writeTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/findings?source=hackernews&limit=1", nil)
@@ -194,7 +194,7 @@ func TestAPIFindingsMultipleFilters(t *testing.T) {
 }
 
 func TestAPIScanHistory(t *testing.T) {
-	dir := setupExtraTestDir(t)
+	dir := setupTestDir(t)
 
 	// Insert scan history
 	if err := storage.SaveScanHistory(5, 3, 2, 1); err != nil {
