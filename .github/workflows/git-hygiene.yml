@@ -1,0 +1,78 @@
+name: Git Hygiene
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+jobs:
+  secrets:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  large-files:
+    name: Large File Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for files >10MB
+        run: |
+          echo "Checking for large files..."
+          found=$(find . -type f -size +10M ! -path './.git/*' ! -path './node_modules/*' 2>/dev/null)
+          if [ -n "$found" ]; then
+            echo "❌ Files larger than 10MB found:"
+            echo "$found"
+            exit 1
+          fi
+          echo "✅ No large files found"
+
+  commit-format:
+    name: Commit Message Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check conventional commits
+        run: |
+          echo "Checking commit messages..."
+          DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5)
+          COMMITS=$(git log --oneline "origin/$DEFAULT_BRANCH..HEAD" 2>/dev/null || git log --oneline -5)
+          if [ -z "$COMMITS" ]; then
+            echo "✅ No new commits to check"
+            exit 0
+          fi
+          echo "Commits to check:"
+          echo "$COMMITS"
+          NON_CONFORMING=$(echo "$COMMITS" | grep -vE '^(feat|fix|chore|docs|test|refactor|ci|build|style|perf|revert|merge)(\(.+\))?: ' || true)
+          if [ -n "$NON_CONFORMING" ]; then
+            echo "⚠️  Non-conventional commits found (warning only):"
+            echo "$NON_CONFORMING"
+          fi
+          echo "✅ Commit format check complete"
+
+  gitignore:
+    name: .gitignore Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check .gitignore exists
+        run: |
+          if [ ! -f ".gitignore" ]; then
+            echo "❌ .gitignore missing!"
+            exit 1
+          fi
+          echo "✅ .gitignore present"
+          for pattern in '.env' 'node_modules/' '*.mp4' 'dist/'; do
+            if ! grep -qF "$pattern" .gitignore; then
+              echo "⚠️  Missing pattern in .gitignore: $pattern"
+            fi
+          done
