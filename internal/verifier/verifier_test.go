@@ -1,6 +1,7 @@
 package verifier
 
 import (
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,10 +10,18 @@ import (
 )
 
 func TestCheckURLAive(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
+
+	// Use the test server's TLS client to skip cert verification
+	origClient := HTTPClient
+	HTTPClient = server.Client()
+	HTTPClient.Transport = &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	defer func() { HTTPClient = origClient }()
 
 	if !CheckURLAive(server.URL) {
 		t.Error("CheckURLAive returned false for live URL")
@@ -24,11 +33,18 @@ func TestCheckURLAive(t *testing.T) {
 }
 
 func TestVerifyProviderPage(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("<html><body>Free tier available! No credit card required.</body></html>"))
 	}))
 	defer server.Close()
+
+	origClient := HTTPClient
+	HTTPClient = server.Client()
+	HTTPClient.Transport = &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	defer func() { HTTPClient = origClient }()
 
 	provider := &models.Provider{
 		Name: "Test Provider",
@@ -49,11 +65,18 @@ func TestVerifyProviderPage(t *testing.T) {
 }
 
 func TestVerifyProviderPageNoFreeTier(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("<html><body>Premium plans only. Credit card required.</body></html>"))
 	}))
 	defer server.Close()
+
+	origClient := HTTPClient
+	HTTPClient = server.Client()
+	HTTPClient.Transport = &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	defer func() { HTTPClient = origClient }()
 
 	provider := &models.Provider{
 		Name: "Premium Provider",
@@ -87,7 +110,7 @@ func TestVerifyProviderPageDead(t *testing.T) {
 }
 
 func TestExtractKeyInfo(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{
 			"data": [
@@ -97,6 +120,13 @@ func TestExtractKeyInfo(t *testing.T) {
 		}`))
 	}))
 	defer server.Close()
+
+	origClient := HTTPClient
+	HTTPClient = server.Client()
+	HTTPClient.Transport = &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	defer func() { HTTPClient = origClient }()
 
 	key := &models.APIKey{
 		ProviderName: "test",

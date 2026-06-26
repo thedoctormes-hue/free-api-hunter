@@ -84,27 +84,88 @@ func NewServerWithDir(addr, dataDir string) *Server {
 }
 
 func (s *Server) routes() {
-	// LLM providers
-	s.mux.HandleFunc("/api/v1/providers", s.handleProviders)
-	s.mux.HandleFunc("/api/v1/providers/", s.handleProviderByID)
-	s.mux.HandleFunc("/api/v1/findings", s.handleFindings)
-	s.mux.HandleFunc("/api/v1/stats", s.handleStats)
-	// Scan history & scan trigger
-	s.mux.HandleFunc("/api/v1/scan-history", s.handleScanHistory)
-	s.mux.HandleFunc("/api/v1/scan", s.handleScan)
-	// TTS providers
-	s.mux.HandleFunc("/api/v1/tts/providers", s.handleTTSProviders)
-	s.mux.HandleFunc("/api/v1/tts/providers/", s.handleTTSProviderByID)
-	s.mux.HandleFunc("/api/v1/tts/stats", s.handleTTSStats)
-	// Health & index
+	// Health (public — no auth)
 	s.mux.HandleFunc("/health", s.handleHealth)
 	s.mux.HandleFunc("/", s.handleIndex)
+
+	// Create handler with protections
+	buildHandler := func(h http.HandlerFunc, public ...string) http.Handler {
+		handler := s.wrapHandler(h)
+		return ProtectedMiddleware(RateLimitMiddleware(CORSMiddleware(MaxSizeMiddleware(handler))), public...)
+	}
+
+	// LLM providers (protected)
+	s.mux.Handle("/api/v1/providers", buildHandler(s.handleProviders))
+	s.mux.Handle("/api/v1/providers/", buildHandler(s.handleProviderByID))
+	s.mux.Handle("/api/v1/findings", buildHandler(s.handleFindings))
+	s.mux.Handle("/api/v1/stats", buildHandler(s.handleStats))
+	// Scan history & scan trigger (protected)
+	s.mux.Handle("/api/v1/scan-history", buildHandler(s.handleScanHistory))
+	s.mux.Handle("/api/v1/scan", buildHandler(s.handleScan))
+	// TTS providers (protected)
+	s.mux.Handle("/api/v1/tts/providers", buildHandler(s.handleTTSProviders))
+	s.mux.Handle("/api/v1/tts/providers/", buildHandler(s.handleTTSProviderByID))
+	s.mux.Handle("/api/v1/tts/stats", buildHandler(s.handleTTSStats))
 }
 
 // ListenAndServe — запустить сервер
+func (s *Server) wrapHandler(h http.HandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Inc("api_call_total")
+		t1 := time.Now()
+		defer func() {
+			since := time.Since(t1).Seconds()
+			SetGauge("api_response_time", since)
+			if w.Header().Get("Status") >= "400" {
+				Inc("api_errors")
+			}
+		}()
+		h(w, r)
+	})
+}
+
+func (s *Server) jsonErrWrapper(w http.ResponseWriter, r *http.Request) {
+	// Reject unknown methods for wrapped handlers
+	if r.Method != "GET" && r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		Inc("api_method_not_allowed")
+		return
+	}
+	// Use the original JSON error flow based on route logic
+	// This wrapper ensures metrics and timing are captured
+	switch r.URL.Path {
+	case "/api/v1/providers":
+		s.handleProviders(w, r)
+	case "/api/v1/providers/":
+		s.handleProviderByID(w, r)
+	case "/api/v1/findings":
+		s.handleFindings(w, r)
+	case "/api/v1/stats":
+		s.handleStats(w, r)
+	case "/api/v1/scan-history":
+		s.handleScanHistory(w, r)
+	case "/api/v1/scan":
+		if r.Method == "POST" {
+			s.handleScan(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	case "/api/v1/tts/providers":
+		s.handleTTSProviders(w, r)
+	case "/api/v1/tts/providers/":
+		s.handleTTSProviderByID(w, r)
+	case "/api/v1/tts/stats":
+		s.handleTTSStats(w, r)
+	default:
+		http.Error(w, "not found", http.StatusNotFound)
+		Inc("api_not_found")
+	}
+}
+
 func (s *Server) ListenAndServe() error {
 	logger.Printf("API server starting on %s", s.Addr)
-	return http.ListenAndServe(s.Addr, s.mux)
+	handler := CORSMiddleware(RateLimitMiddleware(s.mux))
+	return http.ListenAndServe(s.Addr, handler)
 }
 
 // response — стандартный JSON ответ

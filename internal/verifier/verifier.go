@@ -11,6 +11,7 @@ import (
 
 	"free-api-hunter/internal/models"
 	"free-api-hunter/internal/orex"
+	"free-api-hunter/internal/securego"
 	"free-api-hunter/internal/vault"
 )
 
@@ -26,6 +27,12 @@ var HTTPClient = &http.Client{
 
 // CheckURLAive — проверить что URL отвечает 200
 func CheckURLAive(rawURL string) bool {
+	_, err := securego.IsValidOutboundURL(rawURL)
+	if err != nil {
+		logger.Printf("CheckURLAive: URL rejected: %v", err)
+		return false
+	}
+
 	req, err := http.NewRequest("HEAD", rawURL, nil)
 	if err != nil {
 		return false
@@ -60,6 +67,13 @@ func VerifyProviderPage(provider *models.Provider) *VerifyResult {
 	result.URLAlive = CheckURLAive(provider.URL)
 	if !result.URLAlive {
 		logger.Printf("VerifyProvider: %s URL dead", provider.Name)
+		return result
+	}
+
+	// Валидация URL для SSRF protection
+	_, err := securego.IsValidOutboundURL(provider.URL)
+	if err != nil {
+		logger.Printf("VerifyProvider: URL rejected for %s: %v", provider.Name, err)
 		return result
 	}
 
@@ -150,6 +164,13 @@ func VerifyAPIKey(key *models.APIKey) *KeyVerifyResult {
 		}
 	}
 
+	// Validate endpoint URL
+	_, valErr := securego.IsValidOutboundURL(key.Endpoint)
+	if valErr != nil {
+		result.Error = "invalid_endpoint: " + valErr.Error()
+		return result
+	}
+
 	testURLs := []string{
 		strings.TrimRight(key.Endpoint, "/") + "/models",
 		strings.TrimRight(key.Endpoint, "/") + "/v1/models",
@@ -233,6 +254,13 @@ func ExtractKeyInfo(key *models.APIKey) map[string]interface{} {
 			logger.Printf("ExtractKeyInfo: vault error for %s: %v", key.ProviderName, err)
 			return info
 		}
+	}
+
+	// Validate endpoint URL
+	_, valErr := securego.IsValidOutboundURL(key.Endpoint)
+	if valErr != nil {
+		logger.Printf("ExtractKeyInfo: invalid endpoint for %s: %v", key.ProviderName, valErr)
+		return info
 	}
 
 	testURL := strings.TrimRight(key.Endpoint, "/") + "/models"

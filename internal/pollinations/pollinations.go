@@ -17,7 +17,7 @@ import (
 var logger = log.New(log.Writer(), "[pollinations] ", log.LstdFlags)
 
 const (
-	// Base URLs
+	// Base URLs (defaults, use SetBaseURL to override in tests)
 	GenBaseURL   = "https://gen.pollinations.ai"
 	ImageBaseURL = "https://image.pollinations.ai"
 	TextBaseURL  = "https://text.pollinations.ai"
@@ -30,6 +30,14 @@ const (
 	// Vault path
 	VaultPath = "pollinations"
 )
+
+// Configurable base URL for tests
+var genBaseURL = GenBaseURL
+
+// SetBaseURL overrides the base URL for tests.
+func SetBaseURL(url string) {
+	genBaseURL = url
+}
 
 // PollinationsModel — модель из Pollinations API
 type PollinationsModel struct {
@@ -151,7 +159,7 @@ func SetVaultKeyFn(fn func() (string, error)) {
 
 // GetModels — получить список всех моделей из Pollinations API
 func GetModels() (*ModelsResponse, error) {
-	resp, err := httpClient.Get(GenBaseURL + ModelsEndpoint)
+	resp, err := httpClient.Get(genBaseURL + ModelsEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch models: %w", err)
 	}
@@ -162,12 +170,13 @@ func GetModels() (*ModelsResponse, error) {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body = io.NopCloser(strings.NewReader(string(body)))
+
 	var result ModelsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		// Попробовать как массив (legacy format)
 		var legacy []PollinationsModel
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body = io.NopCloser(strings.NewReader(string(body)))
 		if err := json.Unmarshal(body, &legacy); err != nil {
 			return nil, fmt.Errorf("failed to parse models: %w", err)
 		}
@@ -202,7 +211,7 @@ func TestModel(modelID string) *ModelTestResult {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, err := http.NewRequest("POST", GenBaseURL+ChatEndpoint, strings.NewReader(string(body)))
+	req, err := http.NewRequest("POST", genBaseURL+ChatEndpoint, strings.NewReader(string(body)))
 	if err != nil {
 		result.Error = err.Error()
 		return result
@@ -472,7 +481,7 @@ func VerifyImageGeneration() (bool, string) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, err := http.NewRequest("POST", GenBaseURL+ImageEndpoint, strings.NewReader(string(body)))
+	req, err := http.NewRequest("POST", genBaseURL+ImageEndpoint, strings.NewReader(string(body)))
 	if err != nil {
 		return false, err.Error()
 	}

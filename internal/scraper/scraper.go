@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"free-api-hunter/internal/models"
+	"free-api-hunter/internal/securego"
 )
 
 var logger = log.New(log.Writer(), "[scraper] ", log.LstdFlags)
@@ -144,6 +145,11 @@ func CreateRedditClient() *http.Client {
 
 // FetchURL — загрузить URL, вернуть тело или ошибку
 func FetchURL(rawURL string) (string, error) {
+	_, err := securego.IsValidOutboundURL(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("URL rejected: %w", err)
+	}
+
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
 		return "", err
@@ -385,6 +391,10 @@ func ScrapeGitHubREADME(rawURL, sourceID string) []models.Finding {
 
 // ScrapeProviderPage — загрузить страницу провайдера для верификации
 func ScrapeProviderPage(rawURL string) (string, error) {
+	_, err := securego.IsValidOutboundURL(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("URL rejected: %w", err)
+	}
 	return FetchURL(rawURL)
 }
 
