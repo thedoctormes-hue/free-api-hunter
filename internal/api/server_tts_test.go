@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+const testAPIKey = "test-key"
+
 func writeTTSData(t *testing.T, dir string) {
 	t.Helper()
 	data := `{
@@ -36,6 +38,7 @@ func TestTTSProvidersEndpoint(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/tts/providers", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -58,6 +61,7 @@ func TestTTSProvidersNotFound(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/tts/providers", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -72,6 +76,7 @@ func TestTTSProviderByID(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/tts/providers/ElevenLabs", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -93,6 +98,7 @@ func TestTTSProviderByIDNotFound(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/tts/providers/nonexistent", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -106,6 +112,7 @@ func TestTTSProviderByIDEmpty(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/tts/providers/", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -120,6 +127,7 @@ func TestTTSStats(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/tts/stats", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -143,6 +151,7 @@ func TestTTSStatsNotFound(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/tts/stats", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -156,6 +165,7 @@ func TestTTSProvidersMethodNotAllowed(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("POST", "/api/v1/tts/providers", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -169,6 +179,7 @@ func TestTTSStatsMethodNotAllowed(t *testing.T) {
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("POST", "/api/v1/tts/stats", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
