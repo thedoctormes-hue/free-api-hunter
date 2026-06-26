@@ -20,10 +20,6 @@ var _ = orex.FreeModel{}
 
 var logger = log.New(log.Writer(), "[verifier] ", log.LstdFlags)
 
-// ValidateOutboundURL is a variable for overriding IsValidOutboundURL in tests.
-// Defaults to the real implementation.
-var ValidateOutboundURL = securego.IsValidOutboundURL
-
 // HTTPClient — настраиваемый HTTP клиент
 var HTTPClient = &http.Client{
 	Timeout: 10 * time.Second,
@@ -31,7 +27,7 @@ var HTTPClient = &http.Client{
 
 // CheckURLAive — проверить что URL отвечает 200
 func CheckURLAive(rawURL string) bool {
-	_, err := ValidateOutboundURL(rawURL)
+	_, err := securego.IsValidOutboundURL(rawURL)
 	if err != nil {
 		logger.Printf("CheckURLAive: URL rejected: %v", err)
 		return false
@@ -75,7 +71,7 @@ func VerifyProviderPage(provider *models.Provider) *VerifyResult {
 	}
 
 	// Валидация URL для SSRF protection
-	_, err := ValidateOutboundURL(provider.URL)
+	_, err := securego.IsValidOutboundURL(provider.URL)
 	if err != nil {
 		logger.Printf("VerifyProvider: URL rejected for %s: %v", provider.Name, err)
 		return result
@@ -169,7 +165,7 @@ func VerifyAPIKey(key *models.APIKey) *KeyVerifyResult {
 	}
 
 	// Validate endpoint URL
-	_, valErr := ValidateOutboundURL(key.Endpoint)
+	_, valErr := securego.IsValidOutboundURL(key.Endpoint)
 	if valErr != nil {
 		result.Error = "invalid_endpoint: " + valErr.Error()
 		return result
@@ -261,7 +257,7 @@ func ExtractKeyInfo(key *models.APIKey) map[string]interface{} {
 	}
 
 	// Validate endpoint URL
-	_, valErr := ValidateOutboundURL(key.Endpoint)
+	_, valErr := securego.IsValidOutboundURL(key.Endpoint)
 	if valErr != nil {
 		logger.Printf("ExtractKeyInfo: invalid endpoint for %s: %v", key.ProviderName, valErr)
 		return info

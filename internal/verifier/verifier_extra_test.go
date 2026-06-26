@@ -1,12 +1,22 @@
 package verifier
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"free-api-hunter/internal/models"
 )
+
+func init() {
+	ValidateOutboundURL = func(rawURL string) (*url.URL, error) {
+		return url.Parse(rawURL)
+	}
+}
+
+var _ = fmt.Sprintf
 
 func TestVerifyAPIKey_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -186,7 +196,7 @@ func TestVerifyProviderPage_EmptyURL(t *testing.T) {
 }
 
 func TestExtractKeyInfo_Pricing(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{
 			"data": [
@@ -197,11 +207,13 @@ func TestExtractKeyInfo_Pricing(t *testing.T) {
 	}))
 	defer server.Close()
 
+	cleanup := installTestClient(server)
+	defer cleanup()
+
 	key := &models.APIKey{
 		ProviderName: "test",
 		KeyLocation:  "sk-pricing-test",
-		Endpoint:     server.URL,
-	}
+		Endpoint:     server.URL,	}
 
 	info := ExtractKeyInfo(key)
 

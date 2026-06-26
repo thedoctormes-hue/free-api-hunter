@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"free-api-hunter/internal/database"
@@ -11,6 +12,13 @@ import (
 	"free-api-hunter/internal/storage"
 	_ "modernc.org/sqlite"
 )
+
+const testAPIKey = "test-key-for-unit-tests-only"
+
+func init() {
+	os.Setenv("FREE_API_HUNTER_API_KEY", testAPIKey)
+	SetAPIKeys([]string{testAPIKey})
+}
 
 func setupExtraTestDir(t *testing.T) string {
 	t.Helper()
@@ -41,10 +49,10 @@ func writeExtraTestData(t *testing.T, dir string) {
 
 func TestAPIProvidersEmpty(t *testing.T) {
 	dir := setupExtraTestDir(t)
-	defer database.Close()
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/providers", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -57,12 +65,12 @@ func TestAPIProvidersEmpty(t *testing.T) {
 
 func TestAPIProviderByIDCaseSensitive(t *testing.T) {
 	dir := setupExtraTestDir(t)
-	defer database.Close()
 	writeExtraTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	// Wrong case should not match
 	req := httptest.NewRequest("GET", "/api/v1/providers/cohere", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -73,10 +81,10 @@ func TestAPIProviderByIDCaseSensitive(t *testing.T) {
 
 func TestAPIFindingsEmpty(t *testing.T) {
 	dir := setupExtraTestDir(t)
-	defer database.Close()
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/findings", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -89,10 +97,10 @@ func TestAPIFindingsEmpty(t *testing.T) {
 
 func TestAPIStatsEmpty(t *testing.T) {
 	dir := setupExtraTestDir(t)
-	defer database.Close()
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/stats", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -110,10 +118,10 @@ func TestAPIStatsEmpty(t *testing.T) {
 
 func TestAPIMethodNotAllowedFindings(t *testing.T) {
 	dir := setupExtraTestDir(t)
-	defer database.Close()
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("DELETE", "/api/v1/findings", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -124,10 +132,10 @@ func TestAPIMethodNotAllowedFindings(t *testing.T) {
 
 func TestAPIMethodNotAllowedStats(t *testing.T) {
 	dir := setupExtraTestDir(t)
-	defer database.Close()
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("PUT", "/api/v1/stats", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -138,10 +146,10 @@ func TestAPIMethodNotAllowedStats(t *testing.T) {
 
 func TestAPIProviderByIDEmpty(t *testing.T) {
 	dir := setupExtraTestDir(t)
-	defer database.Close()
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/providers/", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -152,11 +160,11 @@ func TestAPIProviderByIDEmpty(t *testing.T) {
 
 func TestAPIFindingsLimitZero(t *testing.T) {
 	dir := setupExtraTestDir(t)
-	defer database.Close()
 	writeExtraTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/findings?limit=0", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -170,11 +178,11 @@ func TestAPIFindingsLimitZero(t *testing.T) {
 
 func TestAPIFindingsMultipleFilters(t *testing.T) {
 	dir := setupExtraTestDir(t)
-	defer database.Close()
 	writeExtraTestData(t, dir)
 	s := NewServerWithDir("127.0.0.1:0", dir)
 
 	req := httptest.NewRequest("GET", "/api/v1/findings?source=hackernews&limit=1", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
@@ -187,7 +195,6 @@ func TestAPIFindingsMultipleFilters(t *testing.T) {
 
 func TestAPIScanHistory(t *testing.T) {
 	dir := setupExtraTestDir(t)
-	defer database.Close()
 
 	// Insert scan history
 	if err := storage.SaveScanHistory(5, 3, 2, 1); err != nil {
@@ -196,6 +203,7 @@ func TestAPIScanHistory(t *testing.T) {
 
 	s := NewServerWithDir("127.0.0.1:0", dir)
 	req := httptest.NewRequest("GET", "/api/v1/scan-history", nil)
+	req.Header.Set("X-API-Key", testAPIKey)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 

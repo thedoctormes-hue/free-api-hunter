@@ -2,12 +2,45 @@ package verifier
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"free-api-hunter/internal/models"
 )
+
+// allowLocalhost is a test helper that lets IsValidOutboundURL accept
+// http://localhost and http://127.0.0.1 URLs (for httptest servers).
+func allowLocalhost(rawURL string) (*url.URL, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	if u.Scheme == "http" || u.Scheme == "https" {
+		return u, nil
+	}
+	return nil, fmt.Errorf("scheme %q not allowed", u.Scheme)
+}
+
+// installTestClient replaces HTTPClient + ValidateOutboundURL for the duration
+// of a test, restoring both on cleanup. Returns the cleanup function.
+func installTestClient(server *httptest.Server) func() {
+	origClient := HTTPClient
+	origValidate := ValidateOutboundURL
+
+	HTTPClient = server.Client()
+	HTTPClient.Transport = &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	ValidateOutboundURL = allowLocalhost
+
+	return func() {
+		HTTPClient = origClient
+		ValidateOutboundURL = origValidate
+	}
+}
 
 func TestCheckURLAive(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -15,13 +48,8 @@ func TestCheckURLAive(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Use the test server's TLS client to skip cert verification
-	origClient := HTTPClient
-	HTTPClient = server.Client()
-	HTTPClient.Transport = &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	defer func() { HTTPClient = origClient }()
+	cleanup := installTestClient(server)
+	defer cleanup()
 
 	if !CheckURLAive(server.URL) {
 		t.Error("CheckURLAive returned false for live URL")
@@ -39,12 +67,8 @@ func TestVerifyProviderPage(t *testing.T) {
 	}))
 	defer server.Close()
 
-	origClient := HTTPClient
-	HTTPClient = server.Client()
-	HTTPClient.Transport = &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	defer func() { HTTPClient = origClient }()
+	cleanup := installTestClient(server)
+	defer cleanup()
 
 	provider := &models.Provider{
 		Name: "Test Provider",
@@ -71,12 +95,8 @@ func TestVerifyProviderPageNoFreeTier(t *testing.T) {
 	}))
 	defer server.Close()
 
-	origClient := HTTPClient
-	HTTPClient = server.Client()
-	HTTPClient.Transport = &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	defer func() { HTTPClient = origClient }()
+	cleanup := installTestClient(server)
+	defer cleanup()
 
 	provider := &models.Provider{
 		Name: "Premium Provider",
@@ -121,12 +141,8 @@ func TestExtractKeyInfo(t *testing.T) {
 	}))
 	defer server.Close()
 
-	origClient := HTTPClient
-	HTTPClient = server.Client()
-	HTTPClient.Transport = &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	defer func() { HTTPClient = origClient }()
+	cleanup := installTestClient(server)
+	defer cleanup()
 
 	key := &models.APIKey{
 		ProviderName: "test",

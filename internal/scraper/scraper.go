@@ -19,6 +19,9 @@ import (
 
 var logger = log.New(log.Writer(), "[scraper] ", log.LstdFlags)
 
+// validateOutboundURL is a variable for overriding securego.IsValidOutboundURL in tests.
+var validateOutboundURL = securego.IsValidOutboundURL
+
 // HTTPClient — базовый HTTP клиент
 var HTTPClient = &http.Client{
 	Timeout: 15 * time.Second,
