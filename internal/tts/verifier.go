@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"free-api-hunter/internal/models"
-	"free-api-hunter/internal/vault"
 )
 
 var logger = log.New(log.Writer(), "[tts-verifier] ", log.LstdFlags)
@@ -20,40 +19,49 @@ var HTTPClient = &http.Client{
 	Timeout: 10 * time.Second,
 }
 
-// VerifyTTSKey — проверить ключ TTS-провайдера
+// pool — глобальный пул ключей (инициализируется через InitKeyPool)
+var pool *KeyPool
+
+// InitKeyPool — инициализировать пул ключей из конфига
+func InitKeyPool(configPath string) error {
+	p, err := NewKeyPool(configPath)
+	if err != nil {
+		return err
+	}
+	pool = p
+	return nil
+}
+
+// GetKeyPool — получить текущий пул (для сохранения состояния)
+func GetKeyPool() (*KeyPool, bool) {
+	if pool == nil {
+		return nil, false
+	}
+	return pool, true
+}
+
+// VerifyTTSKey — проверить ключ TTS-провайдера через пул ключей
 // Делает последовательные запросы:
 // 1. GET /v1/user/subscription — проверка ключа и получение плана
 // 2. GET /v1/voices — список доступных голосов
+// 3. POST /v1/text-to-speech — тестовый запрос (опционально)
+//
+// Использует KeyPool для ротации: если один ключ исчерпан,
+// автоматически переключается на следующий.
+// charsUsed — примерное количество символов в тестовом запросе,
+// для отслеживания расхода.
 func VerifyTTSKey(provider *models.TTSProvider) *models.TTSVerifyResult {
 	result := &models.TTSVerifyResult{
 		CheckedAt: models.Now(),
 	}
 
-	// Получаем реальный ключ из vault
-	realKey, err := getVaultKey(provider.Name)
+	// Получаем ключ из пула (round-robin)
+	keyEntry, err := pool.NextForProvider(normalizeName(provider.Name))
 	if err != nil {
-		// Ключ ещё не в vault — пробуем использовать имя провайдера
-		// (может быть переменная окружения или ключ передан иначе)
-		result.Error = "vault_key_not_found"
-
-		// Fallback: пробуем запрос без ключа
-		// Для ElevenLabs — /v1/voices без ключа вернёт 401
-		// Для других провайдеров может работать
-		checkURL := provider.URL + "/v1/voices"
-		req, _ := http.NewRequest("GET", checkURL, nil)
-		req.Header.Set("User-Agent", "FreeAPIHunter-TTS/0.1")
-		resp, err := HTTPClient.Do(req)
-		if err != nil {
-			result.Error = "no_key_and_request_failed: " + err.Error()
-			return result
-		}
-		result.StatusCode = resp.StatusCode
-		resp.Body.Close()
-		if resp.StatusCode == 401 {
-			result.Error = "no_valid_key"
-		}
+		result.Error = "no_active_keys: " + err.Error()
 		return result
 	}
+	realKey := keyEntry.Key
 
 	// Шаг 1: Проверяем subscription
 	subURL := strings.TrimRight(provider.URL, "/") + "/v1/user/subscription"
@@ -90,8 +98,15 @@ func VerifyTTSKey(provider *models.TTSProvider) *models.TTSVerifyResult {
 		ttsOK, ttsCode, ttsErr := testTTS(ttsURL, realKey)
 		if !ttsOK {
 			result.Error = fmt.Sprintf("tts_test_failed: HTTP %d: %v", ttsCode, ttsErr)
+			// Если ошибка 401/403 — ключ исчерпан или невалиден
+			if ttsCode == 401 || ttsCode == 402 || ttsCode == 403 {
+				pool.ReportError(realKey)
+			}
 		}
 	}
+
+	// Отчёт о расходе (примерно 50 chars на тестовый запрос)
+	pool.ReportUsage(realKey, 50)
 
 	return result
 }
@@ -238,12 +253,6 @@ func testTTS(url, apiKey string) (bool, int, error) {
 
 	respBody, _ := io.ReadAll(resp.Body)
 	return false, resp.StatusCode, fmt.Errorf("TTS failed %d: %s", resp.StatusCode, truncate(string(respBody), 200))
-}
-
-// getVaultKey — получить ключ из vault
-func getVaultKey(providerName string) (string, error) {
-	providerPath := "free-api-hunter/" + normalizeName(providerName)
-	return vault.GetDefaultKey(providerPath)
 }
 
 // normalizeName — нормализовать имя провайдера для пути vault

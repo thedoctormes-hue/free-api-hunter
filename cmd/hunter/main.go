@@ -413,6 +413,12 @@ func printResults(raw []models.Finding, filtered []models.Finding, providers []*
 
 // runTTSPipeline — полный pipeline для TTS-провайдеров: верификация → скоринг → алерт
 func runTTSPipeline(noAlerts bool, alertConfigPath string) {
+	// 0. Инициализируем пул ключей с ротацией
+	if err := tts.InitKeyPool("config/tts_sources.json"); err != nil {
+		logger.Printf("TTS keypool init failed (%v), skipping TTS pipeline", err)
+		return
+	}
+
 	// 1. Загружаем конфиг TTS-провайдеров
 	ttsProviders, err := tts.LoadTTSSources("config/tts_sources.json")
 	if err != nil {
@@ -444,9 +450,14 @@ func runTTSPipeline(noAlerts bool, alertConfigPath string) {
 			score.FeatureScore*100, score.LanguageScore*100, score.LatencyScore*100)
 	}
 
-	// 4. Сохраня
+	// 4. Сохраняем данные и состояние пула
 	if len(ttsProviders) > 0 {
 		saveTTSData(ttsProviders, verifyResults, scores)
+	}
+	if kp, ok := tts.GetKeyPool(); ok {
+		kp.SaveState("data/tts_keypool_state.json")
+		stats := kp.Stats()
+		logger.Printf("TTS keypool: %d active, %d exhausted", stats["active"], stats["exhausted"])
 	}
 
 	// 5. Вывод в stdout
