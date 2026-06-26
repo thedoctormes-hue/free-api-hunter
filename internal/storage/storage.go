@@ -17,9 +17,9 @@ func EnsureDir() error {
 
 // OrexCache — кэш данных от Orex
 type OrexCache struct {
-	Meta       meta              `json:"_meta"`
-	FreeModels []orex.FreeModel  `json:"free_models"`
-	Alerts     []orex.OrexAlert  `json:"alerts"`
+	Meta       meta             `json:"_meta"`
+	FreeModels []orex.FreeModel `json:"free_models"`
+	Alerts     []orex.OrexAlert `json:"alerts"`
 }
 
 // meta — общая структура метаданных
@@ -68,11 +68,10 @@ func MergeOrexProviders(existing []*models.Provider, freeModels []orex.FreeModel
 				Source:       "orex",
 				Priority:     models.PriorityMed,
 				DiscoveredAt: now,
-		})
-		index[fm.Provider] = len(existing) - 1
-	}
+			})
+			index[fm.Provider] = len(existing) - 1
+		}
 	}
 
 	return existing
 }
-

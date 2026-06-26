@@ -41,8 +41,8 @@ func GetMetrics() map[string]interface{} {
 	defer metrics.mu.RUnlock()
 
 	result := map[string]interface{}{
-		"uptime_seconds":   time.Since(metrics.startTime).Seconds(),
-		"server_time":      time.Now().UTC().Format(time.RFC3339),
+		"uptime_seconds": time.Since(metrics.startTime).Seconds(),
+		"server_time":    time.Now().UTC().Format(time.RFC3339),
 	}
 
 	counters := make(map[string]int64)

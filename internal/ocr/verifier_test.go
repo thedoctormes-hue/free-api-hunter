@@ -14,8 +14,8 @@ var _ = strings.TrimSpace // ensure strings is used
 func mockHTTPClient(response string, statusCode int) *http.Client {
 	return &http.Client{
 		Transport: &mockTransport{
-			response:    response,
-			statusCode:  statusCode,
+			response:   response,
+			statusCode: statusCode,
 		},
 	}
 }
@@ -64,8 +64,8 @@ func TestVerifyOCRKeyResult(t *testing.T) {
 
 func TestOCRVerifyResultInactive(t *testing.T) {
 	result := &OCRVerifyResult{
-		IsActive:  false,
-		Error:    "invalid_key",
+		IsActive:   false,
+		Error:      "invalid_key",
 		EngineUsed: 1,
 	}
 
@@ -254,33 +254,33 @@ func (t *countingTransport) RoundTrip(req *http.Request) (*http.Response, error)
 // TestCheckOCRKeySimpleResponseParsing — проверка что разные ответы API корректно интерпретируются
 func TestCheckOCRKeySimpleResponseParsing(t *testing.T) {
 	tests := []struct {
-		name     string
-		response string
+		name       string
+		response   string
 		wantActive bool
 	}{
 		{
-			name:     "invalid key E555",
-			response: `{"error":"E555: API key not valid","details":"Get your FREE ocr api key"}`,
+			name:       "invalid key E555",
+			response:   `{"error":"E555: API key not valid","details":"Get your FREE ocr api key"}`,
 			wantActive: false,
 		},
 		{
-			name:     "E501 not an image (key is valid)",
-			response: `{"error":"E501: Not an image or PDF","details":"Invalid base64"}`,
+			name:       "E501 not an image (key is valid)",
+			response:   `{"error":"E501: Not an image or PDF","details":"Invalid base64"}`,
 			wantActive: true,
 		},
 		{
-			name:     "E216 unable to detect file type (key is valid)",
-			response: `{"error":"E216: Unable to detect the file extension"}`,
+			name:       "E216 unable to detect file type (key is valid)",
+			response:   `{"error":"E216: Unable to detect the file extension"}`,
 			wantActive: true,
 		},
 		{
-			name:     "OCRExitCode present (key accepted)",
-			response: `{"OCRExitCode":3,"IsErroredOnProcessing":true,"ErrorMessage":["error"]}`,
+			name:       "OCRExitCode present (key accepted)",
+			response:   `{"OCRExitCode":3,"IsErroredOnProcessing":true,"ErrorMessage":["error"]}`,
 			wantActive: true,
 		},
 		{
-			name:     "unexpected response",
-			response: `{"something":"unexpected"}`,
+			name:       "unexpected response",
+			response:   `{"something":"unexpected"}`,
 			wantActive: false,
 		},
 	}

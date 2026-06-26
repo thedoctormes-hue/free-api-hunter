@@ -23,11 +23,11 @@ const (
 
 // OCRAlertEvent — событие OCR для отправки через Telegram
 type OCRAlertEvent struct {
-	Type       OCRAlertType `json:"type"`
-	Provider   string       `json:"provider"`
-	Status     string       `json:"status"`
-	Details    string       `json:"details"`
-	Timestamp  string       `json:"timestamp"`
+	Type      OCRAlertType `json:"type"`
+	Provider  string       `json:"provider"`
+	Status    string       `json:"status"`
+	Details   string       `json:"details"`
+	Timestamp string       `json:"timestamp"`
 }
 
 // NewOCRAlertEvent — создать OCR-событие

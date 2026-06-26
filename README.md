@@ -1,11 +1,3 @@
----
-description: "free-api-hunter — README"
-type: readme
-last_reviewed: 2026-06-26
-last_code_change: 2026-06-26
-status: active
----
-
 # Free API Hunter
 
 [![CI](https://github.com/DoctorM-Ai/free-api-hunter/actions/workflows/ci.yml/badge.svg)](https://github.com/DoctorM-Ai/free-api-hunter/actions/workflows/ci.yml)
@@ -21,6 +13,7 @@ status: active
 - Providers — каталог провайдеров с фильтрацией и поиском
 - Findings — лента обнаруженных находок
 - Statistics — детальная аналитика
+- TTS — мониторинг TTS провайдеров и статистики ключей
 
 Исходный код фронтенда: `web/` (React + TypeScript + Tailwind CSS)
 
@@ -33,8 +26,11 @@ status: active
 ```bash
 cd projects/free-api-hunter
 
-# Сборка (через Makefile)
+# Сборка проекта
 make build
+
+# Запуск сервера (API + Index)
+make run
 
 # Запуск поиска (dry-run)
 ./hunter --dry-run --limit 20
@@ -44,36 +40,33 @@ make build
 
 # Полный цикл
 ./hunter
-
-# Конкретный источник
-./hunter --source hackernews
-
-# Без алертов
-./hunter --no-alerts
 ```
 
 ## Архитектура
 
-**Стек:** Go 1.23, стандартная библиотека + JSON-хранилище
+**Стек:** Go 1.23, SQLite (modernc.org/sqlite), стандартная библиотека + JSON-хранилище
 
 **Структура:**
 ```
 cmd/hunter/main.go          — CLI точка входа, оркестрация
 internal/
-  models/models.go           — модели данных (Provider, Finding, APIKey)
+  models/models.go           — модели данных (Provider, Finding, APIKey, TTSProvider)
   scraper/scraper.go         — сбор данных из источников
   filter/filter.go           — фильтрация находок, дедуп, скоринг
   verifier/verifier.go       — верификация ключей и провайдеров
-  storage/storage.go         — JSON хранилище
-  vault/vault.go             — безопасное хранение ключей
+  storage/storage.go         — хранилище (SQLite + JSON fallback)
+  database/sqlite.go         — SQLite backend & migrations
+  vault/vault.go             — безопасное хранение ключей (0600)
   orex/client.go             — Orex API client (OpenRouter Expert)
   alerter/alerter.go         — Telegram алерты
+  tts/keypool.go             — ротация ключей для TTS
 configs/
   sources.json               — источники + провайдеры
   filters.json               — фильтры и скоринг
   alerter.json               — Telegram config (fallback)
 data/                        — runtime cache (gitignored)
-  providers.json             — база провайдеров
+  free-api-hunter.db         — SQLite база данных
+  providers.json             — JSON хранилище (legacy/fallback)
   findings.json              — находки сканера
 ```
 
@@ -82,7 +75,7 @@ data/                        — runtime cache (gitignored)
 sources.json → scraper → []Finding (сырые)
     → filter (дедуп, спам, скоринг) → []Finding (очищенные)
     → verifier (проверка URL, free tier, credit card)
-    → storage (data/providers.json, data/findings.json)
+    → storage (SQLite / JSON)
     → alerter (Telegram, если настроен)
 ```
 
@@ -219,3 +212,4 @@ Nginx конфиг: `/etc/nginx/sites-enabled/freeapihunter.shtab-ai.ru`
 - [Полная документация](DOCUMENTATION.md)
 - [Статус провайдеров](docs/providers-status.md)
 - [Архитектура секретов](docs/secrets-architecture.md)
+- [API Reference](docs/API.md)

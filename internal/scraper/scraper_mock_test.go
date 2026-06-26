@@ -99,17 +99,17 @@ func TestScrapeHackerNewsMock(t *testing.T) {
 		data := map[string]interface{}{
 			"hits": []map[string]interface{}{
 				{
-					"title":    "Free API for LLM inference",
-					"url":      "https://example.com/free-api",
-					"objectID": "12345",
-					"points":   150,
+					"title":      "Free API for LLM inference",
+					"url":        "https://example.com/free-api",
+					"objectID":   "12345",
+					"points":     150,
 					"created_at": "2026-06-26T00:00:00Z",
 				},
 				{
-					"title":    "Paid service announcement",
-					"url":      "https://example.com/paid",
-					"objectID": "12346",
-					"points":   50,
+					"title":      "Paid service announcement",
+					"url":        "https://example.com/paid",
+					"objectID":   "12346",
+					"points":     50,
 					"created_at": "2026-06-25T00:00:00Z",
 				},
 			},
@@ -126,10 +126,10 @@ func TestScrapeHackerNewsMock(t *testing.T) {
 	// We can't easily redirect the URL, but we can test the parsing logic
 	hits := []map[string]interface{}{
 		{
-			"title":    "Free API for LLM inference",
-			"url":      "https://example.com/free-api",
-			"objectID": "12345",
-			"points":   150,
+			"title":      "Free API for LLM inference",
+			"url":        "https://example.com/free-api",
+			"objectID":   "12345",
+			"points":     150,
 			"created_at": "2026-06-26T00:00:00Z",
 		},
 	}
@@ -233,8 +233,8 @@ func TestScrapeWebPageError(t *testing.T) {
 
 func TestExtractDomain(t *testing.T) {
 	tests := []struct {
-		rawURL  string
-		want    string
+		rawURL string
+		want   string
 	}{
 		{"https://www.example.com/path", "example.com"},
 		{"https://api.example.com/v1", "api.example.com"},

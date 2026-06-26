@@ -387,12 +387,12 @@ func LoadScanHistory(limit int) ([]map[string]interface{}, error) {
 			return nil, err
 		}
 		history = append(history, map[string]interface{}{
-			"id": id,
-			"scan_time": scanTime,
-			"raw_count": rawCount,
-			"filtered_count": filteredCount,
+			"id":              id,
+			"scan_time":       scanTime,
+			"raw_count":       rawCount,
+			"filtered_count":  filteredCount,
 			"providers_total": providersTotal,
-			"new_findings": newFindings,
+			"new_findings":    newFindings,
 		})
 	}
 	return history, rows.Err()

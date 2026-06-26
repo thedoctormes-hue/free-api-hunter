@@ -174,11 +174,11 @@ func TestFilterExcludedProvider(t *testing.T) {
 
 	kilo := "Kilo Gateway"
 	f := models.Finding{
-		SourceID:    "test",
-		Title:       "Kilo Gateway free API",
-		URL:         "https://kilo.example.com",
-		Description: "A sufficiently long description that passes the minimum length filter check for testing",
-		RawText:     "Kilo Gateway offers free API access",
+		SourceID:     "test",
+		Title:        "Kilo Gateway free API",
+		URL:          "https://kilo.example.com",
+		Description:  "A sufficiently long description that passes the minimum length filter check for testing",
+		RawText:      "Kilo Gateway offers free API access",
 		ProviderName: &kilo,
 	}
 

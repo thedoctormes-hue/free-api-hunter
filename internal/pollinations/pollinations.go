@@ -18,34 +18,34 @@ var logger = log.New(log.Writer(), "[pollinations] ", log.LstdFlags)
 
 const (
 	// Base URLs
-	GenBaseURL    = "https://gen.pollinations.ai"
-	ImageBaseURL  = "https://image.pollinations.ai"
-	TextBaseURL   = "https://text.pollinations.ai"
-	
+	GenBaseURL   = "https://gen.pollinations.ai"
+	ImageBaseURL = "https://image.pollinations.ai"
+	TextBaseURL  = "https://text.pollinations.ai"
+
 	// Endpoints
 	ModelsEndpoint = "/v1/models"
 	ChatEndpoint   = "/v1/chat/completions"
 	ImageEndpoint  = "/v1/images/generations"
-	
+
 	// Vault path
 	VaultPath = "pollinations"
 )
 
 // PollinationsModel — модель из Pollinations API
 type PollinationsModel struct {
-	ID            string   `json:"id"`
-	Name          string   `json:"name"`
-	Description   string   `json:"description"`
-	Reasoning     bool     `json:"reasoning"`
-	Tier          string   `json:"tier"`
-	Vision        bool     `json:"vision"`
-	Audio         bool     `json:"audio"`
-	Tools         bool     `json:"tools"`
-	InputMods     []string `json:"input_modalities"`
-	OutputMods    []string `json:"output_modalities"`
-	Aliases       []string `json:"aliases"`
-	Created       int64    `json:"created"`
-	OwnedBy       string   `json:"owned_by"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Reasoning   bool     `json:"reasoning"`
+	Tier        string   `json:"tier"`
+	Vision      bool     `json:"vision"`
+	Audio       bool     `json:"audio"`
+	Tools       bool     `json:"tools"`
+	InputMods   []string `json:"input_modalities"`
+	OutputMods  []string `json:"output_modalities"`
+	Aliases     []string `json:"aliases"`
+	Created     int64    `json:"created"`
+	OwnedBy     string   `json:"owned_by"`
 }
 
 // ModelsResponse — ответ /v1/models
@@ -74,11 +74,11 @@ type ChatResponse struct {
 	Choices []struct {
 		Index   int `json:"index"`
 		Message struct {
-			Role             string      `json:"role"`
-			Content          string      `json:"content"`
-			Reasoning        string      `json:"reasoning"`
-			Refusal          interface{} `json:"refusal"`
-			ToolCalls        []interface{} `json:"tool_calls"`
+			Role      string        `json:"role"`
+			Content   string        `json:"content"`
+			Reasoning string        `json:"reasoning"`
+			Refusal   interface{}   `json:"refusal"`
+			ToolCalls []interface{} `json:"tool_calls"`
 		} `json:"message"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
@@ -92,38 +92,38 @@ type ChatResponse struct {
 type ImageResponse struct {
 	Created int `json:"created"`
 	Data    []struct {
-		URL       string `json:"url,omitempty"`
-		B64JSON   string `json:"b64_json,omitempty"`
+		URL           string `json:"url,omitempty"`
+		B64JSON       string `json:"b64_json,omitempty"`
 		RevisedPrompt string `json:"revised_prompt,omitempty"`
 	} `json:"data"`
 }
 
 // ModelTestResult — результат тестирования модели
 type ModelTestResult struct {
-	ModelID      string  `json:"model_id"`
-	ModelAlias   string  `json:"model_alias"`
-	IsFree       bool    `json:"is_free"`
-	IsWorking    bool    `json:"is_working"`
-	Error        string  `json:"error,omitempty"`
-	ResponseTime int64   `json:"response_time_ms"`
-	ActualModel  string  `json:"actual_model,omitempty"`
-	SampleOutput string  `json:"sample_output,omitempty"`
+	ModelID      string `json:"model_id"`
+	ModelAlias   string `json:"model_alias"`
+	IsFree       bool   `json:"is_free"`
+	IsWorking    bool   `json:"is_working"`
+	Error        string `json:"error,omitempty"`
+	ResponseTime int64  `json:"response_time_ms"`
+	ActualModel  string `json:"actual_model,omitempty"`
+	SampleOutput string `json:"sample_output,omitempty"`
 }
 
 // ProviderInfo — полная информация о Pollinations как провайдере
 type ProviderInfo struct {
-	Name         string              `json:"name"`
-	URL          string              `json:"url"`
-	APIKeyURL    string              `json:"api_key_url"`
-	CreditCard   bool                `json:"credit_card"`
-	Status       string              `json:"status"`
-	Models       []string            `json:"models"`
-	ModelsFree   []string            `json:"models_free"`
-	ModelsPaid   []string            `json:"models_paid"`
-	Limits       string              `json:"limits"`
-	Notes        string              `json:"notes"`
-	Endpoints    map[string]string   `json:"endpoints"`
-	VerifiedAt   string              `json:"verified_at"`
+	Name       string            `json:"name"`
+	URL        string            `json:"url"`
+	APIKeyURL  string            `json:"api_key_url"`
+	CreditCard bool              `json:"credit_card"`
+	Status     string            `json:"status"`
+	Models     []string          `json:"models"`
+	ModelsFree []string          `json:"models_free"`
+	ModelsPaid []string          `json:"models_paid"`
+	Limits     string            `json:"limits"`
+	Notes      string            `json:"notes"`
+	Endpoints  map[string]string `json:"endpoints"`
+	VerifiedAt string            `json:"verified_at"`
 }
 
 var httpClient = &http.Client{
@@ -131,8 +131,22 @@ var httpClient = &http.Client{
 }
 
 // getAPIKey — получить ключ из vault
-func getAPIKey() (string, error) {
+var getAPIKeyFn = func() (string, error) {
 	return vault.GetDefaultKey("free-api-hunter/pollinations")
+}
+
+func getAPIKey() (string, error) {
+	return getAPIKeyFn()
+}
+
+// SetHTTPClient allows tests to inject a custom HTTP client.
+func SetHTTPClient(client *http.Client) {
+	httpClient = client
+}
+
+// SetVaultKeyFn allows tests to inject a custom key function.
+func SetVaultKeyFn(fn func() (string, error)) {
+	getAPIKeyFn = fn
 }
 
 // GetModels — получить список всех моделей из Pollinations API
@@ -252,9 +266,9 @@ func TestAllModels() (*ProviderInfo, []ModelTestResult) {
 		CreditCard: false,
 		Status:     "verified",
 		Endpoints: map[string]string{
-			"chat":       GenBaseURL + ChatEndpoint,
-			"models":     GenBaseURL + ModelsEndpoint,
-			"image":      GenBaseURL + ImageEndpoint,
+			"chat":         GenBaseURL + ChatEndpoint,
+			"models":       GenBaseURL + ModelsEndpoint,
+			"image":        GenBaseURL + ImageEndpoint,
 			"image_legacy": ImageBaseURL + "/prompt/{prompt}",
 			"text_legacy":  TextBaseURL + "/{prompt}",
 		},
@@ -430,15 +444,15 @@ func ToProvider(info *ProviderInfo) *models.Provider {
 		providerModels = info.Models
 	}
 	return &models.Provider{
-		Name:        info.Name,
-		URL:         info.URL,
-		APIKeyURL:   info.APIKeyURL,
-		CreditCard:  info.CreditCard,
-		Status:      models.ProviderStatus(info.Status),
-		Models:      providerModels,
-		Limits:      info.Limits,
-		Notes:       info.Notes,
-		Source:      "raven",
+		Name:         info.Name,
+		URL:          info.URL,
+		APIKeyURL:    info.APIKeyURL,
+		CreditCard:   info.CreditCard,
+		Status:       models.ProviderStatus(info.Status),
+		Models:       providerModels,
+		Limits:       info.Limits,
+		Notes:        info.Notes,
+		Source:       "raven",
 		DiscoveredAt: info.VerifiedAt,
 		LastVerified: &info.VerifiedAt,
 	}

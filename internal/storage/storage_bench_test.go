@@ -16,14 +16,14 @@ func BenchmarkSaveProviders(b *testing.B) {
 	providers := make([]*models.Provider, 50)
 	for i := range providers {
 		providers[i] = &models.Provider{
-			Name:       "Provider" + string(rune('A'+i%26)),
-			URL:        "https://example.com",
-			APIKeyURL:  "https://example.com/keys",
-			Status:     models.StatusVerified,
-			Models:     []string{"model-1", "model-2", "model-3"},
-			Limits:     "100 RPM",
-			Source:     "bench",
-			Priority:   models.PriorityHigh,
+			Name:      "Provider" + string(rune('A'+i%26)),
+			URL:       "https://example.com",
+			APIKeyURL: "https://example.com/keys",
+			Status:    models.StatusVerified,
+			Models:    []string{"model-1", "model-2", "model-3"},
+			Limits:    "100 RPM",
+			Source:    "bench",
+			Priority:  models.PriorityHigh,
 		}
 	}
 
@@ -42,10 +42,10 @@ func BenchmarkLoadProviders(b *testing.B) {
 	providers := make([]*models.Provider, 50)
 	for i := range providers {
 		providers[i] = &models.Provider{
-			Name:     "Provider" + string(rune('A'+i%26)),
-			URL:      "https://example.com",
-			Status:   models.StatusVerified,
-			Models:   []string{"model-1", "model-2"},
+			Name:   "Provider" + string(rune('A'+i%26)),
+			URL:    "https://example.com",
+			Status: models.StatusVerified,
+			Models: []string{"model-1", "model-2"},
 		}
 	}
 	SaveProviders(providers, filepath.Join(dir, "bench_providers.json"))

@@ -122,12 +122,12 @@ func VerifyProviderPage(provider *models.Provider) *VerifyResult {
 
 // KeyVerifyResult — результат проверки API ключа
 type KeyVerifyResult struct {
-	IsActive    bool     `json:"is_active"`
-	StatusCode  int      `json:"status_code"`
-	Error       string   `json:"error,omitempty"`
-	Models      []string `json:"models"`
-	Limits      map[string]string `json:"limits"`
-	CheckedAt   string   `json:"checked_at"`
+	IsActive   bool              `json:"is_active"`
+	StatusCode int               `json:"status_code"`
+	Error      string            `json:"error,omitempty"`
+	Models     []string          `json:"models"`
+	Limits     map[string]string `json:"limits"`
+	CheckedAt  string            `json:"checked_at"`
 }
 
 // VerifyAPIKey — проверить что API ключ рабочий (ключ берётся из vault)
@@ -183,8 +183,8 @@ func VerifyAPIKey(key *models.APIKey) *KeyVerifyResult {
 							if mi, ok := m.(map[string]interface{}); ok {
 								if id, ok := mi["id"].(string); ok {
 									result.Models = append(result.Models, id)
-							} else if modelID, ok := mi["model_id"].(string); ok {
-								result.Models = append(result.Models, modelID)
+								} else if modelID, ok := mi["model_id"].(string); ok {
+									result.Models = append(result.Models, modelID)
 								}
 							}
 						}
@@ -215,12 +215,12 @@ func VerifyAPIKey(key *models.APIKey) *KeyVerifyResult {
 // ExtractKeyInfo — извлечь информацию с рабочего ключа (ключ берётся из vault)
 func ExtractKeyInfo(key *models.APIKey) map[string]interface{} {
 	info := map[string]interface{}{
-		"provider":  key.ProviderName,
-		"endpoint":  key.Endpoint,
-		"models":    []string{},
-		"limits":    map[string]string{},
-		"contexts":  map[string]int{},
-		"pricing":   map[string]string{},
+		"provider": key.ProviderName,
+		"endpoint": key.Endpoint,
+		"models":   []string{},
+		"limits":   map[string]string{},
+		"contexts": map[string]int{},
+		"pricing":  map[string]string{},
 	}
 
 	// Получаем реальный ключ из vault
@@ -268,8 +268,8 @@ func ExtractKeyInfo(key *models.APIKey) map[string]interface{} {
 			if mi, ok := m.(map[string]interface{}); ok {
 				if id, ok := mi["id"].(string); ok {
 					models = append(models, id)
-					} else if modelID, ok := mi["model_id"].(string); ok {
-						models = append(models, modelID)
+				} else if modelID, ok := mi["model_id"].(string); ok {
+					models = append(models, modelID)
 				}
 				if ctx, ok := mi["context_length"].(float64); ok {
 					if id, ok := mi["id"].(string); ok {

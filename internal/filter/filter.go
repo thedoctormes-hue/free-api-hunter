@@ -13,30 +13,30 @@ var logger = log.New(log.Writer(), "[filter] ", log.LstdFlags)
 
 // Engine — фильтр мусора с дедупликацией
 type Engine struct {
-	SpamPattern        *regexp.Regexp
-	ExcludeDomains     map[string]bool
-	ExcludedProviders  map[string]bool
-	ExcludeKeywords    []string
+	SpamPattern         *regexp.Regexp
+	ExcludeDomains      map[string]bool
+	ExcludedProviders   map[string]bool
+	ExcludeKeywords     []string
 	ExcludeTrashSources map[string]bool
-	MinDescLength      int
-	RequireURL         bool
-	ExcludeExpired     bool
-	MaxAgeDays         int
-	seenFingerprints   map[string]bool
-	seenURLs           map[string]bool
+	MinDescLength       int
+	RequireURL          bool
+	ExcludeExpired      bool
+	MaxAgeDays          int
+	seenFingerprints    map[string]bool
+	seenURLs            map[string]bool
 }
 
 // FilterConfigData — данные конфигурации фильтров для ApplyConfig
 type FilterConfigData struct {
-	ExcludedProviders  []string
-	SpamDomains        []string
-	SpamKeywords       []string
-	TrashSources       []string
-	MinDescLength      int
-	RequireURL         bool
-	ExcludeExpired     bool
-	MaxAgeDays         int
-	CheckURLUnique     bool
+	ExcludedProviders []string
+	SpamDomains       []string
+	SpamKeywords      []string
+	TrashSources      []string
+	MinDescLength     int
+	RequireURL        bool
+	ExcludeExpired    bool
+	MaxAgeDays        int
+	CheckURLUnique    bool
 }
 
 // ApplyConfig — применить конфигурацию из filters.json
@@ -86,7 +86,7 @@ func NewEngine() *Engine {
 	pattern := regexp.MustCompile(`(?i)купить\s+сейчас|продать\s+|скидка\s+\d+%|рефералка|affiliate\s+link|click\s+here\s+to\s+buy|купить сейчас|скидка!|специальное предложение`)
 
 	return &Engine{
-		SpamPattern:    pattern,
+		SpamPattern: pattern,
 		ExcludeDomains: map[string]bool{
 			"medium.com":   true,
 			"substack.com": true,
@@ -97,8 +97,8 @@ func NewEngine() *Engine {
 			"kilochat":     true,
 			"kilo":         true,
 		},
-		MinDescLength: 30,
-		RequireURL:    false,
+		MinDescLength:    30,
+		RequireURL:       false,
 		seenFingerprints: make(map[string]bool),
 	}
 }

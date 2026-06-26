@@ -20,7 +20,7 @@ var logger = log.New(os.Stderr, "[ocr-verifier] ", log.LstdFlags)
 
 // OCR API endpoints
 const (
-	OCRBaseURL      = "https://api.ocr.space"
+	OCRBaseURL       = "https://api.ocr.space"
 	OCRParseEndpoint = "/parse/image"
 )
 
@@ -31,32 +31,32 @@ var HTTPClient = &http.Client{
 
 // OCRVerifyResult — результат верификации OCR-провайдера
 type OCRVerifyResult struct {
-	IsActive      bool     `json:"is_active"`
-	StatusCode    int      `json:"status_code"`
-	Error         string   `json:"error,omitempty"`
-	EngineUsed    int      `json:"engine_used"`
-	Language      string   `json:"language"`
-	ProcessingMs  string   `json:"processing_ms"`
-	RecognizedText string  `json:"recognized_text,omitempty"`
-	CheckedAt     string   `json:"checked_at"`
+	IsActive       bool   `json:"is_active"`
+	StatusCode     int    `json:"status_code"`
+	Error          string `json:"error,omitempty"`
+	EngineUsed     int    `json:"engine_used"`
+	Language       string `json:"language"`
+	ProcessingMs   string `json:"processing_ms"`
+	RecognizedText string `json:"recognized_text,omitempty"`
+	CheckedAt      string `json:"checked_at"`
 }
 
 // OCRTestResult — результат тестирования OCR с конкретным изображением
 type OCRTestResult struct {
-	Engine        int    `json:"engine"`
-	Language      string `json:"language"`
-	Success       bool   `json:"success"`
-	ExitCode      int    `json:"exit_code"`
-	Text          string `json:"text"`
-	ProcessingMs  string `json:"processing_ms"`
-	Error         string `json:"error,omitempty"`
+	Engine       int    `json:"engine"`
+	Language     string `json:"language"`
+	Success      bool   `json:"success"`
+	ExitCode     int    `json:"exit_code"`
+	Text         string `json:"text"`
+	ProcessingMs string `json:"processing_ms"`
+	Error        string `json:"error,omitempty"`
 }
 
 // VerifyOCRKey — проверить что OCR API ключ рабочий
 // Отправляет тестовое изображение и проверяет что распознавание сработало
 func VerifyOCRKey(providerName string, engine int, language string) *OCRVerifyResult {
 	result := &OCRVerifyResult{
-		CheckedAt: time.Now().UTC().Format(time.RFC3339),
+		CheckedAt:  time.Now().UTC().Format(time.RFC3339),
 		EngineUsed: engine,
 		Language:   language,
 	}
@@ -138,7 +138,7 @@ type ocrAPIResponse struct {
 		TextOverlay struct {
 			Lines []struct {
 				LineText string `json:"LineText"`
-				Words   []struct {
+				Words    []struct {
 					WordText string  `json:"WordText"`
 					Left     float64 `json:"Left"`
 					Top      float64 `json:"Top"`
@@ -151,17 +151,17 @@ type ocrAPIResponse struct {
 			HasOverlay bool   `json:"HasOverlay"`
 			Message    string `json:"Message"`
 		} `json:"TextOverlay"`
-		TextOrientation    string `json:"TextOrientation"`
-		FileParseExitCode  int    `json:"FileParseExitCode"`
-		ParsedText         string `json:"ParsedText"`
-		ErrorMessage       string `json:"ErrorMessage"`
-		ErrorDetails       string `json:"ErrorDetails"`
+		TextOrientation   string `json:"TextOrientation"`
+		FileParseExitCode int    `json:"FileParseExitCode"`
+		ParsedText        string `json:"ParsedText"`
+		ErrorMessage      string `json:"ErrorMessage"`
+		ErrorDetails      string `json:"ErrorDetails"`
 	} `json:"ParsedResults"`
-	OCRExitCode            int      `json:"OCRExitCode"`
-	IsErroredOnProcessing  bool     `json:"IsErroredOnProcessing"`
-	ErrorMessage           []string `json:"ErrorMessage"`
-	ProcessingTimeInMilliseconds string `json:"ProcessingTimeInMilliseconds"`
-	SearchablePDFURL       string `json:"SearchablePDFURL"`
+	OCRExitCode                  int      `json:"OCRExitCode"`
+	IsErroredOnProcessing        bool     `json:"IsErroredOnProcessing"`
+	ErrorMessage                 []string `json:"ErrorMessage"`
+	ProcessingTimeInMilliseconds string   `json:"ProcessingTimeInMilliseconds"`
+	SearchablePDFURL             string   `json:"SearchablePDFURL"`
 }
 
 // ocrInternalResult — внутренний результат парсинга

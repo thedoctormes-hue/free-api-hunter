@@ -43,6 +43,7 @@ func getRandomUserAgent() string {
 
 // rateLimitReddit — простая задержка для Reddit запросов чтобы избежать 429/403
 var lastRedditRequest time.Time
+
 const redditMinInterval = 2 * time.Second
 
 // waitForRedditRateLimit ждёт если нужно соблюсти интервал между запросами к Reddit
@@ -175,7 +176,7 @@ func ScrapeReddit(subreddit, query string, limit int) []models.Finding {
 
 	// Создаём специализированный клиент для Reddit
 	client := CreateRedditClient()
-	
+
 	// Формируем запрос с ротируемым User-Agent
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {

@@ -86,13 +86,13 @@ func calculateFeatureScore(provider *models.TTSProvider) float64 {
 
 	// Уникальные фичи с весами
 	weights := map[string]float64{
-		"audio_tags":         0.25, // уникально для ElevenLabs
-		"voice_cloning":      0.20, // сложно реализовать
+		"audio_tags":          0.25, // уникально для ElevenLabs
+		"voice_cloning":       0.20, // сложно реализовать
 		"pronunciation_dicts": 0.15, // редко у конкурентов
-		"multi_speaker":      0.15, // редко
-		"realtime":           0.15, // важно для агентов
-		"multilingual":       0.05, // почти у всех
-		"streaming":          0.05, // почти у всех
+		"multi_speaker":       0.15, // редко
+		"realtime":            0.15, // важно для агентов
+		"multilingual":        0.05, // почти у всех
+		"streaming":           0.05, // почти у всех
 	}
 
 	score := 0.0

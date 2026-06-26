@@ -7,10 +7,10 @@ import (
 
 func TestFormatOCRKeyStatusActive(t *testing.T) {
 	result := &OCRVerifyResult{
-		IsActive:      true,
-		EngineUsed:    1,
-		Language:      "eng",
-		ProcessingMs:  "312",
+		IsActive:       true,
+		EngineUsed:     1,
+		Language:       "eng",
+		ProcessingMs:   "312",
 		RecognizedText: "HELLO WORLD",
 	}
 

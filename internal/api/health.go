@@ -12,14 +12,14 @@ import (
 
 // HealthStatus — расширенный health check
 type HealthStatus struct {
-	Status        string `json:"status"`
-	Time          string `json:"time"`
-	Version       string `json:"version"`
-	LastScanTime  string `json:"last_scan_time,omitempty"`
-	ProvidersCount int   `json:"providers_count,omitempty"`
-	FindingsCount  int   `json:"findings_count,omitempty"`
-	ScanLogOk     bool   `json:"scan_log_ok"`
-	OrexProxyOk   bool   `json:"orex_proxy_ok"`
+	Status         string `json:"status"`
+	Time           string `json:"time"`
+	Version        string `json:"version"`
+	LastScanTime   string `json:"last_scan_time,omitempty"`
+	ProvidersCount int    `json:"providers_count,omitempty"`
+	FindingsCount  int    `json:"findings_count,omitempty"`
+	ScanLogOk      bool   `json:"scan_log_ok"`
+	OrexProxyOk    bool   `json:"orex_proxy_ok"`
 }
 
 // handleHealthExtended — GET /health — расширенный health check

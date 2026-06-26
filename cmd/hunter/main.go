@@ -35,33 +35,33 @@ type Config struct {
 
 // FilterConfig — конфигурация фильтров из filters.json
 type FilterConfig struct {
-	ExcludedProviders []string          `json:"excluded_providers"`
-	SpamFilters       SpamFilterConfig  `json:"spam_filters"`
-	QualityThreshold  QualityConfig     `json:"quality_threshold"`
-	Dedup             DedupConfig       `json:"dedup"`
+	ExcludedProviders []string         `json:"excluded_providers"`
+	SpamFilters       SpamFilterConfig `json:"spam_filters"`
+	QualityThreshold  QualityConfig    `json:"quality_threshold"`
+	Dedup             DedupConfig      `json:"dedup"`
 }
 
 // SpamFilterConfig — спам-фильтры
 type SpamFilterConfig struct {
-	ExcludeDomains        []string `json:"exclude_domains"`
-	ExcludeKeywords       []string `json:"exclude_keywords"`
-	ExcludeCreditCard     bool     `json:"exclude_credit_card_required"`
-	ExcludeTrashSources   []string `json:"exclude_trash_sources"`
+	ExcludeDomains      []string `json:"exclude_domains"`
+	ExcludeKeywords     []string `json:"exclude_keywords"`
+	ExcludeCreditCard   bool     `json:"exclude_credit_card_required"`
+	ExcludeTrashSources []string `json:"exclude_trash_sources"`
 }
 
 // QualityConfig — пороги качества
 type QualityConfig struct {
-	MinDescLength    int  `json:"min_description_length"`
-	RequireURL       bool `json:"require_url"`
-	ExcludeExpired   bool `json:"exclude_expired"`
-	MaxAgeDays       int  `json:"max_age_days"`
+	MinDescLength  int  `json:"min_description_length"`
+	RequireURL     bool `json:"require_url"`
+	ExcludeExpired bool `json:"exclude_expired"`
+	MaxAgeDays     int  `json:"max_age_days"`
 }
 
 // DedupConfig — настройки дедупликации
 type DedupConfig struct {
-	Enabled           bool     `json:"enabled"`
-	TTLHours          int      `json:"ttl_hours"`
-	CheckURLUnique    bool     `json:"check_url_uniqueness"`
+	Enabled        bool `json:"enabled"`
+	TTLHours       int  `json:"ttl_hours"`
+	CheckURLUnique bool `json:"check_url_uniqueness"`
 }
 
 // ProviderConfig — конфигурация страницы провайдера
@@ -485,7 +485,7 @@ func saveTTSData(providers []*models.TTSProvider, results []*models.TTSVerifyRes
 		Providers []*models.TTSProvider     `json:"providers"`
 		Results   []*models.TTSVerifyResult `json:"verify_results"`
 		Scores    []*models.TTSScore        `json:"scores"`
-		UpdatedAt string                `json:"updated_at"`
+		UpdatedAt string                    `json:"updated_at"`
 	}
 
 	data := ttsData{

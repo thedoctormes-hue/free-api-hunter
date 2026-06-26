@@ -9,11 +9,11 @@ import (
 type ProviderStatus string
 
 const (
-	StatusVerified   ProviderStatus = "verified"
-	StatusConfirmed  ProviderStatus = "confirmed"
-	StatusClaimed    ProviderStatus = "claimed"
-	StatusExpired    ProviderStatus = "expired"
-	StatusUnverified ProviderStatus = "unverified"
+	StatusVerified      ProviderStatus = "verified"
+	StatusConfirmed     ProviderStatus = "confirmed"
+	StatusClaimed       ProviderStatus = "claimed"
+	StatusExpired       ProviderStatus = "expired"
+	StatusUnverified    ProviderStatus = "unverified"
 	StatusDeprioritized ProviderStatus = "deprioritized"
 )
 
@@ -88,22 +88,22 @@ type APIKey struct {
 
 // OCRProvider — OCR-провайдер (отдельный тип от LLM-провайдеров)
 type OCRProvider struct {
-	Name            string   `json:"name"`
-	URL             string   `json:"url"`
-	APIKeyURL       string   `json:"api_key_url"`
-	CreditCard      bool     `json:"credit_card"`
-	Status          ProviderStatus `json:"status"`
-	Engines         []int    `json:"engines"`         // доступные движки (1, 2, 3)
-	Languages       []string `json:"languages"`       // поддерживаемые языки
-	FreeQuota       string   `json:"free_quota"`      // бесплатная квота
-	MaxFileSize     string   `json:"max_file_size"`   // макс размер файла
-	HasOverlay      bool     `json:"has_overlay"`     // bounding box overlay
-	HasTableMode    bool     `json:"has_table_mode"`   // табличный режим
-	HasSearchablePDF bool    `json:"has_searchable_pdf"`
-	Notes           string   `json:"notes"`
-	Source          string   `json:"source"`
-	DiscoveredAt    string   `json:"discovered_at"`
-	LastVerified    *string  `json:"last_verified,omitempty"`
+	Name             string         `json:"name"`
+	URL              string         `json:"url"`
+	APIKeyURL        string         `json:"api_key_url"`
+	CreditCard       bool           `json:"credit_card"`
+	Status           ProviderStatus `json:"status"`
+	Engines          []int          `json:"engines"`        // доступные движки (1, 2, 3)
+	Languages        []string       `json:"languages"`      // поддерживаемые языки
+	FreeQuota        string         `json:"free_quota"`     // бесплатная квота
+	MaxFileSize      string         `json:"max_file_size"`  // макс размер файла
+	HasOverlay       bool           `json:"has_overlay"`    // bounding box overlay
+	HasTableMode     bool           `json:"has_table_mode"` // табличный режим
+	HasSearchablePDF bool           `json:"has_searchable_pdf"`
+	Notes            string         `json:"notes"`
+	Source           string         `json:"source"`
+	DiscoveredAt     string         `json:"discovered_at"`
+	LastVerified     *string        `json:"last_verified,omitempty"`
 }
 
 // OCRKey — рабочий OCR API ключ
@@ -138,7 +138,7 @@ type TTSProvider struct {
 	APIKeyURL    string         `json:"api_key_url"`
 	CreditCard   bool           `json:"credit_card"`
 	Status       ProviderStatus `json:"status"`
-	Models       []string       `json:"models"`   // голоса или модели TTS
+	Models       []string       `json:"models"` // голоса или модели TTS
 	Limits       string         `json:"limits"`
 	FreeTier     *FreeTierInfo  `json:"free_tier,omitempty"`
 	Features     []string       `json:"features"` // audio_tags, voice_cloning, realtime, etc.
@@ -146,7 +146,7 @@ type TTSProvider struct {
 	Source       string         `json:"source"`
 	Priority     Priority       `json:"priority"`
 	DiscoveredAt string         `json:"discovered_at"`
-	LastVerified *string      `json:"last_verified,omitempty"`
+	LastVerified *string        `json:"last_verified,omitempty"`
 	Notes        string         `json:"notes"`
 }
 
@@ -159,14 +159,14 @@ type FreeTierInfo struct {
 
 // TTSVerifyResult — результат верификации TTS-провайдера
 type TTSVerifyResult struct {
-	IsActive     bool     `json:"is_active"`
-	StatusCode   int      `json:"status_code"`
-	Error        string   `json:"error,omitempty"`
-	Models       []string `json:"models"`
-	Voices       []string `json:"voices"`
-	Plan        string   `json:"plan"`         // free, starter, pro, etc.
-	CharLimit    int      `json:"char_limit"`
-	CheckedAt    string   `json:"checked_at"`
+	IsActive   bool     `json:"is_active"`
+	StatusCode int      `json:"status_code"`
+	Error      string   `json:"error,omitempty"`
+	Models     []string `json:"models"`
+	Voices     []string `json:"voices"`
+	Plan       string   `json:"plan"` // free, starter, pro, etc.
+	CharLimit  int      `json:"char_limit"`
+	CheckedAt  string   `json:"checked_at"`
 }
 
 // TTSScore — оценка качества TTS-провайдера

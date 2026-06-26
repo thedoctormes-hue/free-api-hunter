@@ -150,7 +150,7 @@ func checkSubscription(url, apiKey string) (*subResult, error) {
 		Detail struct {
 			Status string `json:"status"`
 		} `json:"detail,omitempty"`
-		Tier   string `json:"tier,omitempty"`
+		Tier string `json:"tier,omitempty"`
 	}
 
 	body, err := io.ReadAll(resp.Body)

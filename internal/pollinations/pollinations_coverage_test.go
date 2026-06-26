@@ -107,13 +107,13 @@ func TestToProviderEmptyModels(t *testing.T) {
 
 func TestToProviderFallbackModels(t *testing.T) {
 	info := &ProviderInfo{
-		Name:        "TestProv",
-		URL:         "https://test.com",
-		APIKeyURL:   "https://test.com/keys",
-		CreditCard:  false,
-		Status:      "verified",
-		Models:      []string{"m1", "m2"},
-		ModelsFree:  nil,
+		Name:       "TestProv",
+		URL:        "https://test.com",
+		APIKeyURL:  "https://test.com/keys",
+		CreditCard: false,
+		Status:     "verified",
+		Models:     []string{"m1", "m2"},
+		ModelsFree: nil,
 		VerifiedAt: "2026-06-26T00:00:00Z",
 	}
 	p := ToProvider(info)

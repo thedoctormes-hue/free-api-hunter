@@ -75,9 +75,9 @@ type OrexPricing struct {
 
 // OrexProvider — провайдер модели
 type OrexProvider struct {
-	ContextLength  int    `json:"context_length"`
-	MaxCompletion  int    `json:"max_completion_tokens,omitempty"`
-	IsModerated    bool   `json:"is_moderated,omitempty"`
+	ContextLength int  `json:"context_length"`
+	MaxCompletion int  `json:"max_completion_tokens,omitempty"`
+	IsModerated   bool `json:"is_moderated,omitempty"`
 }
 
 // OrexArch — архитектура модели
@@ -281,7 +281,7 @@ type FreeModel struct {
 func ToFreeModels(models []OrexModel) []FreeModel {
 	var result []FreeModel
 	for _, m := range models {
-			promptPrice, _ := strconv.ParseFloat(m.Pricing.Prompt, 64)
+		promptPrice, _ := strconv.ParseFloat(m.Pricing.Prompt, 64)
 		completionPrice, _ := strconv.ParseFloat(m.Pricing.Completion, 64)
 		if promptPrice == 0 && completionPrice == 0 {
 			provider := splitProvider(m.ID)

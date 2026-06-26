@@ -15,20 +15,20 @@ type TTSSourceConfig struct {
 
 // TTSProviderConfig — один провайдер в конфиге
 type TTSProviderConfig struct {
-	ID         string       `json:"id"`
-	Name       string       `json:"name"`
-	URL        string       `json:"url"`
-	APIKeyURL  string       `json:"api_key_url"`
-	CreditCard bool         `json:"credit_card"`
-	Status     string       `json:"status"`
-	Models     []string     `json:"models"`
-	Limits     string       `json:"limits"`
-	FreeTier   *FreeTier    `json:"free_tier,omitempty"`
-	Features   []string     `json:"features"`
-	Languages  []string     `json:"languages"`
-	Source     string       `json:"source"`
-	Priority   int          `json:"priority"`
-	Notes      string       `json:"notes"`
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	URL        string    `json:"url"`
+	APIKeyURL  string    `json:"api_key_url"`
+	CreditCard bool      `json:"credit_card"`
+	Status     string    `json:"status"`
+	Models     []string  `json:"models"`
+	Limits     string    `json:"limits"`
+	FreeTier   *FreeTier `json:"free_tier,omitempty"`
+	Features   []string  `json:"features"`
+	Languages  []string  `json:"languages"`
+	Source     string    `json:"source"`
+	Priority   int       `json:"priority"`
+	Notes      string    `json:"notes"`
 }
 
 type FreeTier struct {

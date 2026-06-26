@@ -29,12 +29,12 @@ func TestSaveAndLoadProviders(t *testing.T) {
 
 	providers := []*models.Provider{
 		{
-			Name:       "Test Provider",
-			URL:        "https://example.com",
-			APIKeyURL:  "https://example.com/keys",
-			Status:     models.StatusConfirmed,
-			Models:     []string{"model-1", "model-2"},
-			Limits:     "100 RPM",
+			Name:      "Test Provider",
+			URL:       "https://example.com",
+			APIKeyURL: "https://example.com/keys",
+			Status:    models.StatusConfirmed,
+			Models:    []string{"model-1", "model-2"},
+			Limits:    "100 RPM",
 		},
 	}
 

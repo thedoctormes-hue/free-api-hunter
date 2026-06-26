@@ -13,19 +13,19 @@ import (
 
 // KeyEntry — один ключ в пуле
 type KeyEntry struct {
-	Key       string    `json:"key"`
-	Provider  string    `json:"provider"`
-	CharsUsed int       `json:"chars_used"`  // сколько символов потрачено
-	CharsLimit int      `json:"chars_limit"` // месячный лимит
-	Active    bool      `json:"active"`       // false = исчерпан/заблокирован
-	LastUsed  string    `json:"last_used"`    // ISO timestamp
+	Key        string `json:"key"`
+	Provider   string `json:"provider"`
+	CharsUsed  int    `json:"chars_used"`  // сколько символов потрачено
+	CharsLimit int    `json:"chars_limit"` // месячный лимит
+	Active     bool   `json:"active"`      // false = исчерпан/заблокирован
+	LastUsed   string `json:"last_used"`   // ISO timestamp
 }
 
 // KeyPool — потокобезопасный пул ключей с round-robin ротацией
 type KeyPool struct {
 	mu      sync.Mutex
 	keys    []*KeyEntry
-	current int // индекс текущего ключа
+	current int    // индекс текущего ключа
 	loaded  string // когда загружен (для инвалидации)
 }
 
@@ -252,11 +252,11 @@ func (p *KeyPool) Stats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"total_keys":   len(p.keys),
-		"active":       active,
-		"exhausted":    exhausted,
-		"by_provider":  byProvider,
-		"loaded_at":    p.loaded,
+		"total_keys":  len(p.keys),
+		"active":      active,
+		"exhausted":   exhausted,
+		"by_provider": byProvider,
+		"loaded_at":   p.loaded,
 	}
 }
 

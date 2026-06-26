@@ -21,9 +21,9 @@ var logger = log.New(log.Writer(), "[api] ", log.LstdFlags)
 
 // Server — HTTP API сервер
 type Server struct {
-	Addr     string
-	DataDir  string
-	mux      *http.ServeMux
+	Addr    string
+	DataDir string
+	mux     *http.ServeMux
 }
 
 // NewServer — создать новый API сервер
@@ -261,13 +261,13 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	findings, _ := storage.LoadFindings("")
 
 	stats := map[string]interface{}{
-		"providers_total":    0,
+		"providers_total":     0,
 		"providers_by_status": map[string]int{},
-		"providers_no_cc":    0,
-		"findings_total":     0,
-		"findings_by_source": map[string]int{},
-		"models_total":       0,
-		"server_time":        time.Now().UTC().Format(time.RFC3339),
+		"providers_no_cc":     0,
+		"findings_total":      0,
+		"findings_by_source":  map[string]int{},
+		"models_total":        0,
+		"server_time":         time.Now().UTC().Format(time.RFC3339),
 	}
 
 	if providers != nil {
@@ -328,7 +328,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.jsonOK(w, map[string]string{
-		"status": "not_implemented",
+		"status":  "not_implemented",
 		"message": "Scan trigger via API is not yet implemented. Use CLI mode.",
 	}, 0)
 }
@@ -476,10 +476,10 @@ func (s *Server) handleTTSStats(w http.ResponseWriter, r *http.Request) {
 
 	stats := map[string]interface{}{
 		"providers_total": len(data.Providers),
-		"active_count":   0,
+		"active_count":    0,
 		"free_tier_count": 0,
-		"total_voices":   0,
-		"updated_at":     data.UpdatedAt,
+		"total_voices":    0,
+		"updated_at":      data.UpdatedAt,
 	}
 
 	for _, r := range data.Results {

@@ -11,17 +11,17 @@ var scorerLogger = log.New(os.Stderr, "[ocr-scorer] ", log.LstdFlags)
 
 // OCRScore — оценка качества OCR-провайдера
 type OCRScore struct {
-	ProviderName  string  `json:"provider_name"`
-	OverallScore  float64 `json:"overall_score"`  // 0.0 - 1.0
-	SpeedScore    float64 `json:"speed_score"`    // на основе времени обработки
-	QualityScore  float64 `json:"quality_score"`  // на основе точности распознавания
-	FeatureScore  float64 `json:"feature_score"`  // на основе поддерживаемых фич
-	ValueScore    float64 `json:"value_score"`    // на основе бесплатного тира
-	EnginesCount  int     `json:"engines_count"`
-	LanguagesCount int    `json:"languages_count"`
-	HasFreeTier   bool    `json:"has_free_tier"`
-	FreeQuota     string  `json:"free_quota,omitempty"`
-	ScoredAt      string  `json:"scored_at"`
+	ProviderName   string  `json:"provider_name"`
+	OverallScore   float64 `json:"overall_score"` // 0.0 - 1.0
+	SpeedScore     float64 `json:"speed_score"`   // на основе времени обработки
+	QualityScore   float64 `json:"quality_score"` // на основе точности распознавания
+	FeatureScore   float64 `json:"feature_score"` // на основе поддерживаемых фич
+	ValueScore     float64 `json:"value_score"`   // на основе бесплатного тира
+	EnginesCount   int     `json:"engines_count"`
+	LanguagesCount int     `json:"languages_count"`
+	HasFreeTier    bool    `json:"has_free_tier"`
+	FreeQuota      string  `json:"free_quota,omitempty"`
+	ScoredAt       string  `json:"scored_at"`
 }
 
 // ScoreOCRProvider — оценить OCR-провайдера по результатам тестирования
