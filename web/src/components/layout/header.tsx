@@ -1,21 +1,18 @@
 import { Search, Moon, Sun, Menu } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTheme } from '@/contexts/theme'
+import { useAppStore } from '@/lib/store'
 
-interface HeaderProps {
-  dark: boolean
-  onToggleTheme: () => void
-  onToggleSidebar: () => void
-  searchQuery: string
-  onSearchChange: (q: string) => void
-}
+export function Header() {
+  const { theme, toggleTheme } = useTheme()
+  const { toggleSidebar, searchQuery, setSearchQuery } = useAppStore()
 
-export function Header({ dark, onToggleTheme, onToggleSidebar, searchQuery, onSearchChange }: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--bg-base)]/80 backdrop-blur-md">
       <div className="container flex h-14 items-center gap-4">
         {/* Mobile menu */}
         <button
-          onClick={onToggleSidebar}
+          onClick={toggleSidebar}
           className="md:hidden p-2 rounded-lg hover:bg-[var(--bg-surface-hover)] transition-colors"
           aria-label="Toggle menu"
         >
@@ -23,7 +20,7 @@ export function Header({ dark, onToggleTheme, onToggleSidebar, searchQuery, onSe
         </button>
 
         {/* Logo */}
-        <a href="/" className="flex items-center gap-2 font-bold text-lg text-[var(--text-primary)] shrink-0">
+        <a href="#/" className="flex items-center gap-2 font-bold text-lg text-[var(--text-primary)] shrink-0">
           <span className="text-xl">🔍</span>
           <span className="hidden sm:inline">Free API Hunter</span>
         </a>
@@ -36,7 +33,7 @@ export function Header({ dark, onToggleTheme, onToggleSidebar, searchQuery, onSe
               type="text"
               placeholder="Search providers..."
               value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full h-9 pl-9 pr-4 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] transition-colors"
             />
           </div>
@@ -44,13 +41,13 @@ export function Header({ dark, onToggleTheme, onToggleSidebar, searchQuery, onSe
 
         {/* Theme toggle */}
         <button
-          onClick={onToggleTheme}
+          onClick={toggleTheme}
           className={cn(
             'p-2 rounded-lg hover:bg-[var(--bg-surface-hover)] transition-colors'
           )}
           aria-label="Toggle theme"
         >
-          {dark ? (
+          {theme === 'dark' ? (
             <Sun className="h-5 w-5 text-[var(--text-secondary)]" />
           ) : (
             <Moon className="h-5 w-5 text-[var(--text-secondary)]" />
