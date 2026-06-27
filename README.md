@@ -38,6 +38,9 @@ make run
 # Верификация провайдеров
 ./hunter --verify
 
+# Верификация Cloudflare Workers AI
+./hunter --cf-verify --cf-config config/cf_accounts.json
+
 # Полный цикл
 ./hunter
 ```
@@ -60,6 +63,13 @@ internal/
   orex/client.go             — Orex API client (OpenRouter Expert)
   alerter/alerter.go         — Telegram алерты
   tts/keypool.go             — ротация ключей для TTS
+  cf/                        — Cloudflare Workers AI модуль
+    client.go                — HTTP клиент для CF API
+    keypool.go               — round-robin ротация аккаунтов
+    verifier.go              — верификация ключей CF
+    models.go                — модели данных
+    client_test.go           — тесты клиента
+    keypool_test.go          — тесты пула
 configs/
   sources.json               — источники + провайдеры
   filters.json               — фильтры и скоринг
@@ -81,7 +91,9 @@ sources.json → scraper → []Finding (сырые)
 
 ## Хранение ключей
 
-Ключи хранятся в vault: `/root/LabDoctorM/vault/free-api-hunter/`
+Ключи хранятся в vault:
+- LLM: `/root/LabDoctorM/vault/free-api-hunter/`
+- Cloudflare: `/root/LabDoctorM/vault/cloudflare/{account_id}`
 
 Формат: plaintext файлы с правами 600, одно значение на файл.
 Ключи **никогда** не коммитятся в git.
@@ -91,6 +103,34 @@ sources.json → scraper → []Finding (сырые)
 echo -n "API_KEY" > /root/LabDoctorM/vault/free-api-hunter/{provider}/api.key
 chmod 600 /root/LabDoctorM/vault/free-api-hunter/{provider}/api.key
 ```
+
+## Cloudflare Workers AI
+
+Free API Hunter поддерживает 6 аккаунтов Cloudflare Workers AI с бесплатным лимитом 10,000 Neurons/день на аккаунт (60,000 Neurons/день при ротации).
+
+**Архитектура:**
+- `internal/cf/client.go` — HTTP-клиент для Cloudflare API (`/ai/v1/chat/completions`)
+- `internal/cf/keypool.go` — round-robin ротация с учётом NeuronBudget
+- `internal/cf/verifier.go` — верификация аккаунтов через тестовый запрос
+- `internal/cf/models.go` — модели данных (Account, Model, NeuronBudget, ChatResponse)
+- `config/cf_accounts.json` — конфигурация аккаунтов
+- Ключи хранятся в `vault/cloudflare/{account_id}` (0600)
+
+**80 доступных моделей** (4 модальности):
+- Text Generation: GLM-5.2, Kimi K2.7 Code, GPT-oss-120B, Nemotron-3-120B, Llama 4 Scout, и др.
+- Text Embeddings: BGE-M3, BGE-Small/Base/Large, Qwen3-Embedding-0.6B
+- Text-to-Image: FLUX.2 Dev/Klein-4B/9B, Lucid Origin, Phoenix 1.0
+- Audio TTS/ASR: Aura-1/2, Melotts, Whisper, Nova-3
+
+```bash
+# Верификация CF аккаунтов
+./hunter --cf-verify --cf-config config/cf_accounts.json
+
+# С алертом в Telegram
+./hunter --cf-verify --cf-config config/cf_accounts.json --alert-config config/alerter.json
+```
+
+**Важно:** user ID = Account ID для Cloudflare Workers AI API.
 
 ## TTS/STT провайдеры
 

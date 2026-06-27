@@ -1,0 +1,40 @@
+{
+  "cf_accounts": [
+    {
+      "id": "cf-1",
+      "name": "CF Account 1 (Main)",
+      "account_id": "207736d5b210b443550eed21bd09502b",
+      "limit": 10000
+    },
+    {
+      "id": "cf-2",
+      "name": "CF Account 2",
+      "account_id": "a35fc6ed5da4e21b2f492a5ede04eb73",
+      "limit": 10000
+    },
+    {
+      "id": "cf-3",
+      "name": "CF Account 3",
+      "account_id": "62f67a9debc67c45a49a6b8eacef2352",
+      "limit": 10000
+    },
+    {
+      "id": "cf-4",
+      "name": "CF Account 4",
+      "account_id": "34ba88610ade55bc07b1244274acfebc",
+      "limit": 10000
+    },
+    {
+      "id": "cf-5",
+      "name": "CF Account 5",
+      "account_id": "9799b87f0d905886e01fda1a19c3d9cb",
+      "limit": 10000
+    },
+    {
+      "id": "cf-6",
+      "name": "CF Account 6",
+      "account_id": "f6db2cf91561290f288e70b9ffa9cca5",
+      "limit": 10000
+    }
+  ]
+}

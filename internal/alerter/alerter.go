@@ -309,3 +309,15 @@ func FormatTTSScoreReport(score *models.TTSScore) string {
 	b.WriteString(fmt.Sprintf("\n⏰ %s UTC", time.Now().Format("2006-01-02 15:04")))
 	return b.String()
 }
+
+
+// FormatCFReport - report on Cloudflare Workers AI accounts
+func FormatCFReport(activeCount, totalCount, score int) string {
+	var b strings.Builder
+	b.WriteString("<b>Cloudflare Workers AI Report</b>\n\n")
+	b.WriteString(fmt.Sprintf("Active accounts: <b>%d/%d</b>\n", activeCount, totalCount))
+	b.WriteString(fmt.Sprintf("Score: <b>%d%%</b>\n", score))
+	b.WriteString(fmt.Sprintf("Free Neurons/day: <b>%d</b>\n", activeCount*10000))
+	b.WriteString(fmt.Sprintf("Updated: %s UTC", time.Now().Format("2006-01-02 15:04")))
+	return b.String()
+}

@@ -10,6 +10,7 @@ import (
 
 	"free-api-hunter/internal/alerter"
 	"free-api-hunter/internal/api"
+	"free-api-hunter/internal/cf"
 	"free-api-hunter/internal/filter"
 	"free-api-hunter/internal/models"
 	"free-api-hunter/internal/ocr"
@@ -82,6 +83,8 @@ func main() {
 	alertConfigPath := flag.String("alert-config", "config/alerter.json", "Путь к конфигу алертеров")
 	showVersion := flag.Bool("version", false, "Показать версию и выйти")
 	apiAddr := flag.String("api", "", "Запустить HTTP API сервер на указанном адресе (напр. :8080)")
+	cfVerify := flag.Bool("cf-verify", false, "Верифицировать Cloudflare Workers AI аккаунты")
+	cfConfigPath := flag.String("cf-config", "config/cf_accounts.json", "Путь к конфигу CF аккаунтов")
 	flag.Parse()
 
 	if *showVersion {
@@ -147,6 +150,12 @@ func main() {
 		if err := storage.SaveScanHistory(len(rawFindings), len(findings), len(providers), 0); err != nil {
 			logger.Printf("Failed to save scan history: %v", err)
 		}
+	}
+
+	// 6b. Cloudflare Workers AI pipeline
+	if *cfVerify {
+		logger.Println("Running Cloudflare Workers AI pipeline...")
+		runCFPipeline(*cfConfigPath, *noAlerts, *alertConfigPath)
 	}
 
 	// 7. OCR pipeline
@@ -586,5 +595,108 @@ func runOCRPipeline(noAlerts bool, alertConfigPath string) {
 				logger.Println("OCR score alert sent")
 			}
 		}
+	}
+}
+
+// runCFPipeline — полный pipeline для Cloudflare Workers AI: верификация → скоринг → алерт
+func runCFPipeline(cfConfigPath string, noAlerts bool, alertConfigPath string) {
+	// 0. Инициализируем пул аккаунтов
+	if err := cf.InitKeyPool(cfConfigPath); err != nil {
+		logger.Printf("CF keypool init failed (%v), skipping CF pipeline", err)
+		return
+	}
+
+	// 1. Верифицируем все аккаунты
+	logger.Println("CF: verifying accounts...")
+	verifyResults := cf.VerifyAll()
+	if verifyResults == nil {
+		logger.Println("CF: no accounts in pool")
+		return
+	}
+
+	activeCount := 0
+	var details []map[string]interface{}
+	for _, r := range verifyResults {
+		if r.Active {
+			activeCount++
+		}
+		details = append(details, map[string]interface{}{
+			"account_id":   r.AccountID,
+			"active":       r.Active,
+			"models_count": r.ModelsCount,
+			"neuron_limit": r.NeuronLimit,
+			"error":        r.Error,
+		})
+		status := "❌"
+		if r.Active {
+			status = "✅"
+		}
+		logger.Printf("CF: %s %s — %d models, %d neurons/day%s",
+			status, r.AccountID[:12], r.ModelsCount, r.NeuronLimit,
+			map[bool]string{true: "", false: " — " + r.Error}[r.Active])
+	}
+
+	// 2. Скоринг
+	logger.Printf("CF: scoring... (%d/%d active)", activeCount, len(verifyResults))
+	score := activeCount * 100 / len(verifyResults)
+
+	// 3. Вывод в stdout
+	fmt.Println()
+	fmt.Println(strings.Repeat("─", 40))
+	fmt.Println("CLOUDFLARE WORKERS AI")
+	fmt.Println(strings.Repeat("─", 40))
+	for _, d := range details {
+		status := "❌"
+		if d["active"].(bool) {
+			status = "✅"
+		}
+		fmt.Printf("[%s] %s\n", status, d["account_id"].(string)[:12])
+	}
+	fmt.Println(strings.Repeat("─", 40))
+	fmt.Printf("Active: %d/%d | Score: %d%%\n", activeCount, len(verifyResults), score)
+	fmt.Printf("Total free Neurons/day: %d\n", activeCount*10000)
+	fmt.Println(strings.Repeat("─", 40))
+
+	// 4. Сохраняем данные
+	saveCFData(verifyResults)
+
+	// 5. Алерт
+	if !noAlerts && activeCount > 0 {
+		alertCfg, err := alerter.LoadConfig(alertConfigPath)
+		if err != nil {
+			logger.Printf("CF alert: config not found (%v), skipping", err)
+		} else {
+			report := alerter.FormatCFReport(activeCount, len(verifyResults), score)
+			if err := alerter.SendTelegram(alertCfg, report); err != nil {
+				logger.Printf("CF alert failed: %v", err)
+			} else {
+				logger.Println("CF report alert sent")
+			}
+		}
+	}
+}
+
+// saveCFData — сохранить CF данные в JSON
+func saveCFData(results []*cf.VerifyResult) {
+	type cfData struct {
+		Results   []*cf.VerifyResult `json:"results"`
+	UpdatedAt string `json:"updated_at"`
+	}
+
+	data := cfData{
+		Results:   results,
+		UpdatedAt: models.Now(),
+	}
+
+	jsonData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		logger.Printf("CF: failed to marshal: %v", err)
+		return
+	}
+
+	if err := os.WriteFile("data/cf_accounts.json", jsonData, 0644); err != nil {
+		logger.Printf("CF: failed to save: %v", err)
+	} else {
+		logger.Println("CF: saved to data/cf_accounts.json")
 	}
 }
