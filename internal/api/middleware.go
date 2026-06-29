@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // ============================================================
@@ -169,13 +172,8 @@ func MaxSizeMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// testMode allows skipping authentication in tests
-var testMode = false
-
-// SetTestMode enables test mode (no auth required)
-func SetTestMode() {
-	testMode = true
-}
+// testMode allows skipping authentication in tests (set via TEST_MODE=true env)
+var testMode = os.Getenv("TEST_MODE") == "true"
 
 var allowedAPIKeys = []string{os.Getenv("FREE_API_HUNTER_API_KEY")}
 
@@ -243,4 +241,153 @@ func cmdCompare(a, b string) bool {
 		result |= int(a[i] ^ b[i])
 	}
 	return result == 0
+}
+
+// ============================================================
+// Structured JSON Logger + Response Headers
+// ============================================================
+
+// jsonLogger is the structured logger instance (JSON handler, level from env)
+var jsonLogger *slog.Logger
+
+func init() {
+	level := slog.LevelInfo
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LOG_LEVEL"))) {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	}
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: level,
+	})
+	jsonLogger = slog.New(handler)
+}
+
+// contextKey stores the request ID in context
+type contextKey string
+
+const requestIDKey contextKey = "requestID"
+
+// RequestIDFromContext extracts the request ID from context
+func RequestIDFromContext(ctx context.Context) string {
+	if id, ok := ctx.Value(requestIDKey).(string); ok {
+		return id
+	}
+	return ""
+}
+
+// responseWriter wraps http.ResponseWriter to capture status code
+type responseWriter struct {
+	http.ResponseWriter
+	status      int
+	wroteHeader bool
+}
+
+func newResponseWriter(w http.ResponseWriter) *responseWriter {
+	return &responseWriter{ResponseWriter: w, status: http.StatusOK}
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	if !rw.wroteHeader {
+		rw.status = code
+		rw.wroteHeader = true
+		rw.ResponseWriter.WriteHeader(code)
+	}
+}
+
+// LoggingMiddleware adds request ID, response headers and structured JSON logging.
+// It does NOT modify any existing handlers or business logic.
+func LoggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		// Generate request ID (UUID v4)
+		reqID := uuid.NewString()
+		ctx := context.WithValue(r.Context(), requestIDKey, reqID)
+		r = r.WithContext(ctx)
+
+		// Set X-Request-ID header immediately so it's present even on errors
+		w.Header().Set("X-Request-ID", reqID)
+
+		// Set X-RateLimit headers (from global state for visibility)
+		ip := realIP(r)
+		globalRateLimiter.mu.Lock()
+		entry, exists := globalRateLimiter.requestCounts[ip]
+		var currentCount int
+		var windowStart time.Time
+		if exists {
+			if t, ok := entry[0].(time.Time); ok {
+				windowStart = t
+			}
+			if c, ok := entry[1].(int); ok {
+				currentCount = c
+			}
+		}
+		globalRateLimiter.mu.Unlock()
+
+		resetSeconds := 0
+		if !windowStart.IsZero() {
+			resetDur := globalRateLimiter.windowDuration - time.Since(windowStart)
+			if resetDur > 0 {
+				resetSeconds = int(resetDur.Seconds())
+			}
+		}
+		remaining := globalRateLimiter.maxRequestsPerWindow - currentCount
+		if remaining < 0 {
+			remaining = 0
+		}
+
+		w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", globalRateLimiter.maxRequestsPerWindow))
+		w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", remaining))
+		w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", resetSeconds))
+
+		// Wrap response writer to capture status
+		rw := newResponseWriter(w)
+
+		// Call next handler
+		next.ServeHTTP(rw, r)
+
+		// Calculate response time
+		duration := time.Since(start)
+		w.Header().Set("X-Response-Time", fmt.Sprintf("%dms", duration.Milliseconds()))
+
+		// Cache-Control for cacheable endpoints
+		path := r.URL.Path
+		if strings.HasPrefix(path, "/api/v1/providers") || strings.HasPrefix(path, "/api/v1/findings") {
+			w.Header().Set("Cache-Control", "max-age=60, stale-while-revalidate=300")
+		}
+
+		// Structured JSON log entry
+		jsonLogger.LogAttrs(r.Context(), levelForStatus(rw.status),
+			"http_request",
+			slog.String("request_id", reqID),
+			slog.String("method", r.Method),
+			slog.String("path", path),
+			slog.String("ip", ip),
+			slog.String("user_agent", r.UserAgent()),
+			slog.Int("status", rw.status),
+			slog.Duration("duration", duration),
+			slog.Int("rate_limit_remaining", remaining),
+		)
+	})
+}
+
+// levelForStatus returns the appropriate log level based on HTTP status code
+func levelForStatus(status int) slog.Level {
+	switch {
+	case status >= 500:
+		return slog.LevelError
+	case status >= 400:
+		return slog.LevelWarn
+	case status >= 300:
+		return slog.LevelInfo
+	default:
+		if jsonLogger.Enabled(context.Background(), slog.LevelDebug) {
+			return slog.LevelDebug
+		}
+		return slog.LevelInfo
+	}
 }

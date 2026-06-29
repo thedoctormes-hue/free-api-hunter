@@ -120,11 +120,10 @@ async def cmd_result(args):
     api_key = _get_api_key(config, args.key if hasattr(args, 'key') else None)
     client = ManusClient(api_key=api_key, base_url=config.base_url)
 
-    response = await client.list_messages(args.task_id)
-
-    output_text = client.extract_output_text(response)
-    attachments = client.extract_attachments(response)
-    structured = client.extract_structured_output(response)
+    result = await client.get_result(args.task_id)
+    output_text = result.text
+    attachments = result.attachments or []
+    structured = result.structured_output
 
     _print_header(f"Результат задачи {args.task_id}")
 
@@ -140,10 +139,12 @@ async def cmd_result(args):
     if attachments:
         print(f"\n📎 Вложения ({len(attachments)}):")
         for att in attachments:
-            print(f"   • {att['filename']}")
-            print(f"     URL: {att.get('url', 'N/A')}")
-            if att.get('size_bytes'):
-                print(f"     Size: {att['size_bytes']} bytes")
+            fname = att.get('name', att.get('filename', att.get('file_name', 'unknown')))
+            print(f"   • {fname}")
+            print(f"     URL: {att.get('url', att.get('file_url', 'N/A'))}")
+            if att.get('size_bytes') or att.get('size'):
+                sz = att.get('size_bytes', att.get('size', 'unknown'))
+                print(f"     Size: {sz} bytes")
     else:
         print("\n📎 Вложений нет")
 

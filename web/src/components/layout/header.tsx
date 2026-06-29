@@ -42,6 +42,7 @@ export function Header() {
         {/* Theme toggle */}
         <button
           onClick={toggleTheme}
+          data-testid="theme-toggle"
           className={cn(
             'p-2 rounded-lg hover:bg-[var(--bg-surface-hover)] transition-colors'
           )}
