@@ -105,3 +105,4 @@ tmp/
 
 # === Backup artifacts ===
 .backupignore
+hunter_bin
