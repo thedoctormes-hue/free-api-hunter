@@ -44,3 +44,64 @@ __pycache__/
 
 # Output
 output/
+node_modules/
+.venv/
+dist/
+build/
+.next/
+.cache/
+.tox/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.npm/
+.yarn/
+.pnp
+.pnp.js
+.tmp/
+temp/
+*.log
+logs/
+*.swp
+*.swo
+*~
+
+# === Build artifacts ===
+node_modules/
+dist/
+build/
+.next/
+out/
+
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.tox/
+*.egg-info/
+
+# === IDE ===
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Logs ===
+*.log
+
+# === Temp ===
+.cache/
+.tmp/
+tmp/
+
+# === Backup artifacts ===
+.backupignore

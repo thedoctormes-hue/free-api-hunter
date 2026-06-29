@@ -220,13 +220,13 @@ export function ProvidersPage({ searchQuery: headerSearch }: { searchQuery?: str
 
 function ProviderCard({ provider }: { provider: Provider }) {
   return (
-    <Card hover>
+    <Card hover data-testid="provider-card">
       <CardContent>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <h3 className="font-semibold text-[var(--text-primary)] truncate">{provider.name}</h3>
-              <Badge variant={provider.status}>{provider.status}</Badge>
+              <Badge variant={provider.status} data-testid="provider-status-badge">{provider.status}</Badge>
             </div>
             {provider.url && (
               <a

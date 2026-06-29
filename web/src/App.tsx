@@ -12,6 +12,7 @@ const ProvidersPage = lazy(() => import('@/pages/providers').then(m => ({ defaul
 const FindingsPage = lazy(() => import('@/pages/findings').then(m => ({ default: m.FindingsPage })))
 const StatsPage = lazy(() => import('@/pages/stats').then(m => ({ default: m.StatsPage })))
 const TTSPage = lazy(() => import('@/pages/tts').then(m => ({ default: m.TTSPage })))
+const DocsPage = lazy(() => import('@/pages/docs').then(m => ({ default: m.DocsPage })))
 const NotFoundPage = lazy(() => import('@/pages/not-found').then(m => ({ default: m.NotFoundPage })))
 
 const queryClient = new QueryClient({
@@ -66,6 +67,8 @@ function AppContent() {
         return <StatsPage />
       case '/tts':
         return <TTSPage />
+      case '/docs':
+        return <DocsPage />
       default:
         return <NotFoundPage />
     }

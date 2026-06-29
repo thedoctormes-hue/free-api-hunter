@@ -236,8 +236,10 @@ func TestFindingsLimit(t *testing.T) {
 
 	var resp response
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp.Meta.Count != 1 {
-		t.Errorf("expected 1 finding, got %d", resp.Meta.Count)
+	// Meta.Count is total count; check data has exactly 1 item
+	data, ok := resp.Data.([]interface{})
+	if !ok || len(data) != 1 {
+		t.Errorf("expected 1 finding in data, got %d", len(data))
 	}
 }
 

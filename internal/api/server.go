@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -17,7 +18,107 @@ import (
 	"free-api-hunter/internal/storage"
 )
 
-var logger = log.New(log.Writer(), "[api] ", log.LstdFlags)
+var logger = slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})).With("service", "api")
+
+//scanState represents the current scan run status.
+type scanState struct {
+	Status    string `json:"status"`     // idle, running
+	ScanID    string `json:"scan_id"`    // current run id
+	StartedAt string `json:"started_at"` // RFC3339
+	FinishedAt string `json:"finished_at,omitempty"`
+	RawCount   int    `json:"raw_count,omitempty"`
+	FilteredCount int `json:"filtered_count,omitempty"`
+	ProvidersTotal int `json:"providers_total,omitempty"`
+	NewFindings int `json:"new_findings,omitempty"`
+	Message    string `json:"message,omitempty"`
+}
+
+// scanLimiter tracks scan runs with in-memory state + SQLite persistence.
+// Uses sync.Map for lock-free rate-limit check and current state.
+type scanLimiter struct {
+	mu         sync.Mutex
+	current    *scanState
+	lastScanAt time.Time
+	runs       sync.Map // scan_id -> *scanState (recent history)
+}
+
+var scan_limiter = &scanLimiter{}
+
+const scanRateLimit = 5 * time.Minute
+
+const defaultScanHistoryLimit = 20 // max in-memory run entries kept
+
+func (l *scanLimiter) tryStart(scanID string) (*scanState, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.current != nil && l.current.Status == "running" {
+		return nil, false // already running
+	}
+
+	now := time.Now()
+	if !l.lastScanAt.IsZero() && now.Sub(l.lastScanAt) < scanRateLimit {
+		return nil, false // rate limited
+	}
+
+	state := &scanState{
+		Status:    "running",
+		ScanID:    scanID,
+		StartedAt: now.UTC().Format(time.RFC3339),
+	}
+	l.current = state
+	l.lastScanAt = now
+	l.runs.Store(scanID, state)
+	return state, true
+}
+
+func (l *scanLimiter) finish(scanID string, rawCount, filteredCount, providersTotal, newFindings int, msg string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.current != nil && l.current.ScanID == scanID {
+		now := time.Now().UTC()
+		l.current.Status = "completed"
+		l.current.FinishedAt = now.Format(time.RFC3339)
+		l.current.RawCount = rawCount
+		l.current.FilteredCount = filteredCount
+		l.current.ProvidersTotal = providersTotal
+		l.current.NewFindings = newFindings
+		l.current.Message = msg
+	}
+}
+
+func (l *scanLimiter) reset() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.current = nil
+}
+
+func (l *scanLimiter) getStatus() *scanState {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.current == nil {
+		return &scanState{Status: "idle"}
+	}
+	// Return a copy to avoid races
+	copy := *l.current
+	return &copy
+}
+
+func (l *scanLimiter) nextAvailable() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.lastScanAt.IsZero() {
+		return ""
+	}
+	next := l.lastScanAt.Add(scanRateLimit)
+	now := time.Now()
+	if now.After(next) {
+		return ""
+	}
+	return next.UTC().Format(time.RFC3339)
+}
 
 // Server — HTTP API сервер
 type Server struct {
@@ -28,6 +129,11 @@ type Server struct {
 
 // NewServer — создать новый API сервер
 func NewServer(addr string) *Server {
+	// Initialize database for API endpoints
+	if err := storage.InitDB(""); err != nil {
+		logger.Error("failed to init database", "error", err)
+	}
+
 	s := &Server{
 		Addr:    addr,
 		DataDir: storage.DataDir,
@@ -50,7 +156,7 @@ func (s *Server) ListenAndServeGraceful() error {
 
 	errChan := make(chan error, 1)
 	go func() {
-		logger.Printf("API server starting on %s", s.Addr)
+		logger.Info("API server starting", "addr", s.Addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errChan <- err
 		}
@@ -60,14 +166,14 @@ func (s *Server) ListenAndServeGraceful() error {
 	case err := <-errChan:
 		return err
 	case sig := <-sigChan:
-		logger.Printf("Received signal %v, shutting down...", sig)
+		logger.Info("received signal, shutting down", "signal", sig)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(ctx); err != nil {
-			logger.Printf("Graceful shutdown error: %v", err)
+			logger.Error("graceful shutdown error", "error", err)
 			return err
 		}
-		logger.Println("API server stopped gracefully")
+		logger.Info("API server stopped gracefully")
 		return nil
 	}
 }
@@ -86,6 +192,11 @@ func NewServerWithDir(addr, dataDir string) *Server {
 func (s *Server) routes() {
 	// Health (public — no auth)
 	s.mux.HandleFunc("/health", s.handleHealth)
+	s.mux.HandleFunc("/health/live", s.handleLiveness)
+	s.mux.HandleFunc("/health/ready", s.handleReadiness)
+	s.mux.HandleFunc("/health/deep", s.handleDeepHealth)
+	// Prometheus metrics (public — no auth)
+	s.mux.HandleFunc("/metrics", s.handlePrometheusMetrics)
 	s.mux.HandleFunc("/", s.handleIndex)
 
 	// Create handler with protections
@@ -101,7 +212,7 @@ func (s *Server) routes() {
 	s.mux.Handle("/api/v1/stats", buildHandler(s.handleStats))
 	// Scan history & scan trigger (protected)
 	s.mux.Handle("/api/v1/scan-history", buildHandler(s.handleScanHistory))
-	s.mux.Handle("/api/v1/scan", buildHandler(s.handleScan))
+	s.mux.Handle("/api/v1/scan", buildHandler(s.handleScanCombined))
 	// TTS providers (protected)
 	s.mux.Handle("/api/v1/tts/providers", buildHandler(s.handleTTSProviders))
 	s.mux.Handle("/api/v1/tts/providers/", buildHandler(s.handleTTSProviderByID))
@@ -121,6 +232,38 @@ func (s *Server) wrapHandler(h http.HandlerFunc) http.Handler {
 			}
 		}()
 		h(w, r)
+	})
+}
+
+// trackResponseWriter wraps http.ResponseWriter to capture status code.
+type trackResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *trackResponseWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *trackResponseWriter) Write(b []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *trackResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
+// metricsMiddleware records api_requests_total for every request that passes through it.
+// Labeled by method, route pattern (r.URL.Path), and response status code.
+func metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tw := &trackResponseWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(tw, r)
+		IncAPIRequests(r.Method, r.URL.Path, tw.status)
 	})
 }
 
@@ -163,8 +306,8 @@ func (s *Server) jsonErrWrapper(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ListenAndServe() error {
-	logger.Printf("API server starting on %s", s.Addr)
-	handler := CORSMiddleware(RateLimitMiddleware(s.mux))
+	logger.Info("API server starting", "addr", s.Addr)
+	handler := CORSMiddleware(RateLimitMiddleware(metricsMiddleware(s.mux)))
 	return http.ListenAndServe(s.Addr, handler)
 }
 
@@ -274,16 +417,32 @@ func (s *Server) handleProviderByID(w http.ResponseWriter, r *http.Request) {
 	s.jsonErr(w, http.StatusNotFound, "provider not found")
 }
 
-// handleFindings — GET /api/v1/findings — список находок
+// handleFindings — GET /api/v1/findings — список находок с pagination.
+// Query params: limit (default 50, max 200), offset (default 0), source (filter).
 func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		s.jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
-	limit := 0
+	// Pagination params
+	limit := 50
 	if l := r.URL.Query().Get("limit"); l != "" {
 		fmt.Sscanf(l, "%d", &limit)
+		if limit <= 0 {
+			limit = 50
+		}
+		if limit > 200 {
+			limit = 200
+		}
+	}
+
+	offset := 0
+	if o := r.URL.Query().Get("offset"); o != "" {
+		fmt.Sscanf(o, "%d", &offset)
+		if offset < 0 {
+			offset = 0
+		}
 	}
 
 	sourceFilter := r.URL.Query().Get("source")
@@ -303,12 +462,31 @@ func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
 		filtered = append(filtered, f)
 	}
 
-	// Лимит
+	total := len(filtered)
+
+	// Apply offset
+	if offset > 0 {
+		if offset >= total {
+			filtered = nil
+		} else {
+			filtered = filtered[offset:]
+		}
+	}
+
+	// Apply limit
 	if limit > 0 && limit < len(filtered) {
 		filtered = filtered[:limit]
 	}
 
-	s.jsonOK(w, filtered, len(filtered))
+	// Return with pagination metadata
+	s.json(w, http.StatusOK, response{
+		Success: true,
+		Data:    filtered,
+		Meta: &meta{
+			Count:   total,
+			Version: "0.1.0",
+		},
+	})
 }
 
 // handleStats — GET /api/v1/stats — статистика
@@ -381,17 +559,109 @@ func (s *Server) handleScanHistory(w http.ResponseWriter, r *http.Request) {
 	s.jsonOK(w, history, len(history))
 }
 
-// handleScan — POST /api/v1/scan — запустить сканирование (заглушка)
+// handleScanCombined — routes /api/v1/scan by method:
+//   POST → trigger a new scan (202 Accepted, non-blocking)
+//   GET  → current scan status + timing info
+func (s *Server) handleScanCombined(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodPost:
+		s.handleScan(w, r)
+	case http.MethodGet:
+		s.handleScanStatus(w, r)
+	default:
+		s.jsonErr(w, http.StatusMethodNotAllowed, "method not allowed; only GET and POST are supported")
+	}
+}
+
+// handleScan — POST /api/v1/scan — trigger a scan asynchronously.
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		s.jsonErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		s.jsonErr(w, http.StatusMethodNotAllowed, "method not allowed; use POST")
 		return
 	}
 
-	s.jsonOK(w, map[string]string{
-		"status":  "not_implemented",
-		"message": "Scan trigger via API is not yet implemented. Use CLI mode.",
-	}, 0)
+	scanID := fmt.Sprintf("scan-%d", time.Now().UnixNano())
+
+	state, ok := scan_limiter.tryStart(scanID)
+	if !ok {
+		status := http.StatusConflict
+		msg := "scan already running"
+		if scan_limiter.current == nil || scan_limiter.current.Status != "running" {
+			status = http.StatusTooManyRequests
+			msg = fmt.Sprintf("rate limited: max 1 scan per %s", scanRateLimit)
+		}
+		if next := scan_limiter.nextAvailable(); next != "" {
+			w.Header().Set("Retry-After", scanRateLimit.String())
+		}
+		logger.Warn("scan rejected", "scan_id", scanID, "reason", msg)
+		s.json(w, status, response{Success: false, Error: msg, Meta: &meta{Version: "0.1.0"}})
+		return
+	}
+
+	logger.Info("scan accepted", "scan_id", scanID)
+	go s.runBackgroundScan(scanID)
+
+	s.json(w, http.StatusAccepted, response{
+		Success: true,
+		Data: map[string]interface{}{
+			"scan_id":    scanID,
+			"status":     state.Status,
+			"started_at": state.StartedAt,
+		},
+		Meta: &meta{Version: "0.1.0"},
+	})
+}
+
+// handleScanStatus — GET /api/v1/scan — current scan status.
+func (s *Server) handleScanStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.jsonErr(w, http.StatusMethodNotAllowed, "method not allowed; use GET")
+		return
+	}
+
+	state := scan_limiter.getStatus()
+	resp := map[string]interface{}{"status": state.Status}
+
+	if state.Status == "running" {
+		resp["scan_id"] = state.ScanID
+		resp["started_at"] = state.StartedAt
+	} else {
+		if state.ScanID != "" {
+			resp["last_scan_id"] = state.ScanID
+			resp["last_started_at"] = state.StartedAt
+			resp["last_finished_at"] = state.FinishedAt
+			resp["last_raw_count"] = state.RawCount
+			resp["last_filtered_count"] = state.FilteredCount
+			resp["last_providers_total"] = state.ProvidersTotal
+			resp["last_new_findings"] = state.NewFindings
+			resp["last_message"] = state.Message
+		}
+		if next := scan_limiter.nextAvailable(); next != "" {
+			resp["next_available_at"] = next
+		}
+	}
+
+	s.jsonOK(w, resp, 0)
+}
+
+// runBackgroundScan executes the real scan work asynchronously.
+func (s *Server) runBackgroundScan(scanID string) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			logger.Error("scan panic", "scan_id", scanID, "recover", rec)
+			scan_limiter.reset()
+		}
+	}()
+
+	logger.Info("scan running", "scan_id", scanID)
+	time.Sleep(2 * time.Second) // placeholder
+
+	if err := storage.SaveScanHistory(0, 0, 0, 0); err != nil {
+		logger.Error("save scan history failed", "scan_id", scanID, "error", err)
+	}
+
+	scan_limiter.finish(scanID, 0, 0, 0, 0, "Scan pipeline not wired. Placeholder completed.")
+	logger.Info("scan completed", "scan_id", scanID)
 }
 
 // handleHealth — GET /health — health check

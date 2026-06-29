@@ -46,7 +46,7 @@ export function StatsCards({ stats, isLoading }: StatsCardsProps) {
       {cards.map((card) => {
         const Icon = card.icon
         return (
-          <Card key={card.label} hover>
+          <Card key={card.label} hover data-testid="stats-card">
             <CardContent className="flex items-center gap-4">
               {isLoading ? (
                 <Skeleton className="h-12 w-12 rounded-xl" />
