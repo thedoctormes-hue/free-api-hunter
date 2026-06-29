@@ -315,10 +315,15 @@ class ManusClient:
         for msg in messages:
             if msg.get("type") == "assistant_message":
                 am = msg.get("assistant_message", {})
-                # Extract text from content blocks
-                for c in am.get("content", []):
-                    if c.get("type") == "output_text":
-                        text = c.get("text", text)
+                # Extract text from content (str or list of blocks)
+                content = am.get("content", [])
+                if isinstance(content, str):
+                    if content:
+                        text = content
+                elif isinstance(content, list):
+                    for c in content:
+                        if isinstance(c, dict) and c.get("type") == "output_text":
+                            text = c.get("text", text)
                 # Collect attachments
                 attachments.extend(am.get("attachments", []))
                 # Extract structured output if present

@@ -39,17 +39,35 @@ class ManusConfig:
 
         accounts = []
         for acc in data.get("accounts", []):
+            # Load API key from vault, never from JSON
+            api_key = ""
+            key_ref = acc.get("key_ref", "")
+            if key_ref:
+                # key_ref is relative to /root/LabDoctorM/
+                vault_path = os.path.join("/root/LabDoctorM", key_ref)
+                try:
+                    with open(vault_path, "r") as kf:
+                        api_key = kf.read().strip()
+                except (OSError, IOError) as e:
+                    print(f"WARNING: Failed to load key from {vault_path}: {e}")
+            
+            if not api_key:
+                # Fallback: check if key is in the file (legacy, will be removed)
+                api_key = acc.get("key", "")
+                if api_key:
+                    print(f"WARNING: Using legacy key from JSON for {acc['id']}. Migrate to vault!")
+
             accounts.append(ManusAccount(
                 id=acc["id"],
-                api_key=acc["key"],
+                api_key=api_key,
                 credit_limit_per_day=acc.get("credit_limit", 300),
                 remaining_credits=acc.get("balance", 300),
             ))
 
         return cls(
-            base_url=data.get("base_url", cls.base_url),
+            base_url=data.get("base_url") or cls.base_url,
             accounts=accounts,
-            redis_url=data.get("redis_url", cls.redis_url),
+            redis_url=data.get("redis_url") or cls.redis_url,
             polling_interval_sec=data.get("polling_interval_sec", cls.polling_interval_sec),
             polling_timeout_sec=data.get("polling_timeout_sec", cls.polling_timeout_sec),
             webhook_secret=data.get("webhook_secret", ""),
