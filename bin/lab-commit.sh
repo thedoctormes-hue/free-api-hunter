@@ -75,4 +75,50 @@ export GIT_AUTHOR_EMAIL="$GIT_EMAIL"
 export GIT_COMMITTER_NAME="$GIT_NAME"
 export GIT_COMMITTER_EMAIL="$GIT_EMAIL"
 
+# === Git Hygiene Checks ===
+
+# 1. Check for .gitignore
+if [ ! -f ".gitignore" ]; then
+  echo "⚠️  WARNING: .gitignore missing in $(pwd)"
+fi
+
+# 2. Check for large files (>10MB) in staged changes
+MAX_SIZE=10485760
+large_files=$(git diff --cached --diff-filter=A --name-only 2>/dev/null | while read f; do
+  if [ -f "$f" ]; then
+    size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f" 2>/dev/null || echo 0)
+    if [ "$size" -gt "$MAX_SIZE" ]; then
+      echo "$f ($(( size / 1048576 ))MB)"
+    fi
+  fi
+done)
+if [ -n "$large_files" ]; then
+  echo "❌ BLOCKED: Large files detected:"
+  echo "$large_files"
+  exit 1
+fi
+
+# 3. Check for suspicious patterns in staged files
+suspicious=$(git diff --cached --name-only 2>/dev/null | grep -iE '(\.env$|\.env\.|credentials\.|\.key$|\.pem$|\.p12$)' || true)
+if [ -n "$suspicious" ]; then
+  echo "❌ BLOCKED: Sensitive files detected:"
+  echo "$suspicious"
+  exit 1
+fi
+
+# 4. Scan staged content for secrets (passwords, tokens, API keys)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/scan-secrets.py" ]; then
+  SCAN_RESULT=$(python3 "$SCRIPT_DIR/scan-secrets.py" 2>/dev/null)
+  if [ -n "$SCAN_RESULT" ]; then
+    echo "❌ BLOCKED: Potential secrets in staged content:"
+    echo "$SCAN_RESULT"
+    echo ""
+    echo "If this is a false positive, use: git commit --no-verify"
+    exit 1
+  fi
+fi
+
+echo "✅ Git hygiene checks passed"
+
 exec git commit "$@"

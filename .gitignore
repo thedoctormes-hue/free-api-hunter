@@ -35,6 +35,9 @@ data/
 Thumbs.db
 
 # Secrets
+*.key
+*.pem
+*.p12
 configs/manus-keys.json
 configs/*.key
 
