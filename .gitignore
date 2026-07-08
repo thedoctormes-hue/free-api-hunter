@@ -109,3 +109,9 @@ tmp/
 # === Backup artifacts ===
 .backupignore
 hunter_bin
+
+# Search orchestrator secrets (never commit real keys)
+configs/search-keys.yaml
+config/search-keys.yaml
+configs/.key-index-*
+config/.key-index-*

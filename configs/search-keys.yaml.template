@@ -1,0 +1,25 @@
+# Search Provider API Keys — TEMPLATE
+# Copy to search-keys.yaml and fill in real keys
+# chmod 600 search-keys.yaml
+
+providers:
+  tavily:
+    - tvly-dev-XXXXXXXXXXXXXXXXXXXX
+    - tvly-dev-XXXXXXXXXXXXXXXXXXXX
+    - tvly-dev-XXXXXXXXXXXXXXXXXXXX
+    - tvly-dev-XXXXXXXXXXXXXXXXXXXX
+    - tvly-dev-XXXXXXXXXXXXXXXXXXXX
+
+  firecrawl:
+    - fc-XXXXXXXXXXXXXXXXXXXXXXXX
+    - fc-XXXXXXXXXXXXXXXXXXXXXXXX
+    - fc-XXXXXXXXXXXXXXXXXXXXXXXX
+    - fc-XXXXXXXXXXXXXXXXXXXXXXXX
+    - fc-XXXXXXXXXXXXXXXXXXXXXXXX
+
+  tinyfish:
+    - sk-tin-XXXXXXXXXXXXXXXXXXXX
+    - sk-tin-XXXXXXXXXXXXXXXXXXXX
+    - sk-tin-XXXXXXXXXXXXXXXXXXXX
+    - sk-tin-XXXXXXXXXXXXXXXXXXXX
+    - sk-tin-XXXXXXXXXXXXXXXXXXXX
