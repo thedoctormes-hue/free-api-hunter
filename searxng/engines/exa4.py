@@ -84,7 +84,7 @@ def response(resp: "SXNG_Response") -> EngineResults:
                 url=url,
                 title=r.get("title", "") or url,
                 content=r.get("text", "") or r.get("summary", ""),
-                publishedDate=__import__("datetime").datetime.fromisoformat(r["publishedDate"].replace("Z","+00:00")) if r.get("publishedDate") else None,
+                publishedDate=r.get("publishedDate"),
             )
         )
     return res
