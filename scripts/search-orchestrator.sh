@@ -139,6 +139,7 @@ search_tavily() {
     local count="$2"
     local max_retries=5
     local i
+    local banned=0
 
     for ((i = 0; i < max_retries; i++)); do
         local key
@@ -150,8 +151,10 @@ search_tavily() {
             -d "{\"api_key\":\"${key}\",\"query\":\"${query}\",\"max_results\":${count},\"include_answer\":true}" \
             --max-time 30 2>/dev/null)
 
-        if echo "$response" | grep -q '"status":429\|"code":429\|rate.limit'; then
-            log "Tavily: key $((i+1)) → 429, skip to next"
+        if echo "$response" | grep -q '"status":429\|"code":429\|rate.limit\|Unauthorized\|"code":"401"\|"code":"403"'; then
+            log "Tavily: key $((i+1)) → 401/429 (temp ban), backoff 2s"
+            banned=1
+            sleep 2
             continue
         fi
 
@@ -165,8 +168,13 @@ search_tavily() {
         log "Tavily: key $((i+1)) → empty/error, skip"
     done
 
-    log "Tavily: all keys exhausted"
-    echo '{"error":"all_keys_exhausted","provider":"tavily"}'
+    if [ "${banned:-0}" = "1" ]; then
+        log "Tavily: all keys temp-banned (provider soft-ban, not dead keys)"
+        echo '{"error":"provider_temp_banned","provider":"tavily"}'
+    else
+        log "Tavily: all keys exhausted"
+        echo '{"error":"all_keys_exhausted","provider":"tavily"}'
+    fi
     return 1
 }
 
@@ -177,6 +185,7 @@ search_firecrawl() {
     local count="$2"
     local max_retries=5
     local i
+    local banned=0
 
     for ((i = 0; i < max_retries; i++)); do
         local key
@@ -189,8 +198,10 @@ search_firecrawl() {
             -d "{\"query\":\"${query}\",\"limit\":${count}}" \
             --max-time 30 2>/dev/null)
 
-        if echo "$response" | grep -q '"status":429\|"code":429\|rate.limit'; then
-            log "Firecrawl: key $((i+1)) → 429, skip to next"
+        if echo "$response" | grep -q '"status":429\|"code":429\|rate.limit\|Unauthorized\|"code":"401"\|"code":"403"'; then
+            log "Firecrawl: key $((i+1)) → 401/429 (temp ban), backoff 2s"
+            banned=1
+            sleep 2
             continue
         fi
 
@@ -203,8 +214,13 @@ search_firecrawl() {
         log "Firecrawl: key $((i+1)) → empty/error, skip"
     done
 
-    log "Firecrawl: all keys exhausted"
-    echo '{"error":"all_keys_exhausted","provider":"firecrawl"}'
+    if [ "${banned:-0}" = "1" ]; then
+        log "Firecrawl: all keys temp-banned (provider soft-ban, not dead keys)"
+        echo '{"error":"provider_temp_banned","provider":"firecrawl"}'
+    else
+        log "Firecrawl: all keys exhausted"
+        echo '{"error":"all_keys_exhausted","provider":"firecrawl"}'
+    fi
     return 1
 }
 
@@ -215,6 +231,7 @@ search_tinyfish() {
     local count="$2"
     local max_retries=5
     local i
+    local banned=0
 
     local encoded_query
     encoded_query=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$query" 2>/dev/null)
@@ -229,8 +246,10 @@ search_tinyfish() {
             -H "X-API-Key: ${key}" \
             --max-time 30 2>/dev/null)
 
-        if echo "$response" | grep -q '"code":"MISSING_API_KEY"\|"error"\|429'; then
-            log "TinyFish: key $((i+1)) → error/429, skip to next"
+        if echo "$response" | grep -q '"code":"MISSING_API_KEY"\|"error"\|429\|Unauthorized\|"code":"401"\|"code":"403"'; then
+            log "TinyFish: key $((i+1)) → 401/429 (temp ban), backoff 2s"
+            banned=1
+            sleep 2
             continue
         fi
 
@@ -243,8 +262,13 @@ search_tinyfish() {
         log "TinyFish: key $((i+1)) → empty, skip"
     done
 
-    log "TinyFish: all keys exhausted"
-    echo '{"error":"all_keys_exhausted","provider":"tinyfish"}'
+    if [ "${banned:-0}" = "1" ]; then
+        log "TinyFish: all keys temp-banned (provider soft-ban, not dead keys)"
+        echo '{"error":"provider_temp_banned","provider":"tinyfish"}'
+    else
+        log "TinyFish: all keys exhausted"
+        echo '{"error":"all_keys_exhausted","provider":"tinyfish"}'
+    fi
     return 1
 }
 
@@ -476,10 +500,6 @@ try:
 except Exception:
     thr = 2
 tj_raw = open(tvf).read(); fj_raw = open(svf).read()
-try:
-    d = json.loads(tj_raw)
-except Exception:
-    d = {"error": "tavily_unavailable_or_invalid"}
 def urls(blob):
     try:
         x=json.loads(blob)
@@ -488,18 +508,36 @@ def urls(blob):
     if isinstance(x,dict) and "results" in x:
         return [r.get("url","") for r in x.get("results",[]) if r.get("url")]
     return []
-t=urls(tj_raw); s=urls(fj_raw); inter=set(t)&set(s)
-verified=len(inter)>=max(1,thr-1)
+t=urls(tj_raw); s=urls(fj_raw)
+t_avail=len(t)>0; s_avail=len(s)>0
+inter=set(t)&set(s); overlap=len(inter)
+if t_avail and s_avail:
+    verified=overlap>=max(1,thr-1)
+    status=("verified" if verified else "unverified_synthesis")
+    err=None
+elif not t_avail and not s_avail:
+    verified=False; status="both_sources_unavailable"; err="both_sources_unavailable"
+elif not t_avail:
+    verified=False; status="tavily_unavailable"; err="tavily_unavailable_or_invalid"
+else:
+    verified=False; status="searxng_unavailable"; err="searxng_unavailable"
+try:
+    d=json.loads(tj_raw) if tj_raw.strip() else {}
+except Exception:
+    d={}
+if err:
+    d["error"]=err
 d.setdefault("_meta",{})
 d["_meta"]["verification"]={
   "cross_checked_with":["tavily","searxng"],
   "tavily_urls":len(t),"searxng_urls":len(s),
-  "overlapping_urls":sorted(inter),"overlap_count":len(inter),
+  "tavily_available":t_avail,"searxng_available":s_avail,
+  "overlapping_urls":sorted(inter),"overlap_count":overlap,
   "threshold":thr,"verified":verified,
-  "answer_status":("verified" if verified else "unverified_synthesis")
+  "answer_status":status
 }
 if not verified and "answer" in d:
-    d["answer"]="[UNVERIFIED_SYNTHESIS] "+str(d["answer"])
+    d["answer"]="["+status.upper()+"] "+str(d["answer"])
 print(json.dumps(d, ensure_ascii=False))
 PY
     rm -f "$tvf" "$svf"
