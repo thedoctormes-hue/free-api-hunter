@@ -40,19 +40,34 @@ TMP=$(mktemp)
 jq --arg k "$APIKEY" ".\"$PROVIDER\" = [\$k]" "$KEYSTORE" > "$TMP" && mv "$TMP" "$KEYSTORE"
 echo "stored $PROVIDER key in $KEYSTORE"
 
-# 2) copy engine module into container
-docker cp "$ENGINES_DIR/$PROVIDER.py" searxng:/usr/local/searxng/searx/engines/$PROVIDER.py
-echo "deployed engine $PROVIDER.py -> searxng container"
+# 2) copy ALL engine modules into container (folder NOT mounted, to avoid
+#    shadowing SearXNG's built-in engines). docker cp writes into the
+#    container layer; survives `restart`, lost on `up -d` recreate (re-run).
+for f in "$ENGINES_DIR"/*.py; do
+  [ -f "$f" ] || continue
+  docker cp "$f" searxng:/usr/local/searxng/searx/engines/"$(basename "$f")"
+done
+echo "copied engine modules -> searxng container"
 
-# 3) write env var for container
-touch "$ENVFILE"
-grep -v "^${ENVNAME}=" "$ENVFILE" > "$ENVFILE.tmp" || true
-echo "$ENVNAME=$APIKEY" >> "$ENVFILE.tmp"
-mv "$ENVFILE.tmp" "$ENVFILE"
-chmod 600 "$ENVFILE"
-echo "env $ENVNAME written to $ENVFILE"
+# 3) inject key into settings.yml (placeholder <ENVNAME> or append engine block)
+SETTINGS=/root/LabDoctorM/projects/free-api-hunter/searxng/settings.yml
+if grep -q "api_key: <${ENVNAME}>" "$SETTINGS"; then
+  sed -i "s|api_key: <${ENVNAME}>|api_key: $APIKEY|" "$SETTINGS"
+  echo "injected $PROVIDER key into settings.yml (placeholder)"
+elif grep -q "name: $PROVIDER$" "$SETTINGS"; then
+  echo "engine $PROVIDER already present in settings.yml (key expected inline)"
+else
+  cat >> "$SETTINGS" <<EOF
 
-# 4) restart searxng to load engine + env
+  - name: $PROVIDER
+    engine: $PROVIDER
+    api_key: $APIKEY
+    categories: [general, web]
+EOF
+  echo "appended $PROVIDER engine block to settings.yml"
+fi
+
+# 4) restart searxng to load engine + key
 docker compose -f "$COMPOSE" restart searxng
 echo "restarted searxng"
 
