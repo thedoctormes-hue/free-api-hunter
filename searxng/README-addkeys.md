@@ -29,7 +29,11 @@ SearXNG (`use_default_settings: true`) — ключи не нужны.
 ## Как вписать ключ (после реги)
 Один вызов на провайдера:
 ```
+# один ключ
 bash bin/lab-search-gateway-addkey.sh exa      <EXA_KEY>
+# ПУЛ для роутинга (несколько аккаунтов Exa -> движки exa/exa2/exa3):
+bash bin/lab-search-gateway-addkey.sh exa <KEY1> <KEY2> <KEY3>
+# остальные провайдеры — по одному ключу
 bash bin/lab-search-gateway-addkey.sh serper   <SERPER_KEY>
 bash bin/lab-search-gateway-addkey.sh serpapi  <SERPAPI_KEY>
 bash bin/lab-search-gateway-addkey.sh olostep  <OLOSTEP_KEY>
