@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Firecrawl search engine for SearXNG (Unified Search Gateway)."""
+"""Firecrawl search engine for SearXNG (key-rotating pool)."""
 
 import json
+import threading
 import typing as t
 
 from searx.exceptions import SearxEngineAPIException
@@ -20,7 +21,11 @@ about = {
     "results": "JSON",
 }
 
+api_keys: list[str] = []
 api_key: str = ""
+
+_api_idx = 0
+_api_lock = threading.Lock()
 
 categories = ["general", "web", "ai"]
 paging = False
@@ -33,15 +38,25 @@ base_url = "https://api.firecrawl.dev/v1/search"
 
 
 def init(_):
-    if not api_key:
-        raise SearxEngineAPIException("No API key provided for Firecrawl")
+    global api_key
+    if not api_keys:
+        raise SearxEngineAPIException("No API keys provided for Firecrawl")
+    api_key = api_keys[0]
+
+
+def _next_key() -> str:
+    global _api_idx
+    with _api_lock:
+        k = api_keys[_api_idx % len(api_keys)]
+        _api_idx += 1
+    return k
 
 
 def request(query: str, params: "OnlineParams") -> None:
     params["url"] = base_url
     params["method"] = "POST"
     params["headers"]["Content-Type"] = "application/json"
-    params["headers"]["Authorization"] = "Bearer " + api_key
+    params["headers"]["Authorization"] = "Bearer " + _next_key()
     body = {
         "query": query,
         "limit": 10,

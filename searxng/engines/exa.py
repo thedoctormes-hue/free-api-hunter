@@ -1,21 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Engine to search using the Exa AI Search API.
+"""Engine to search using the Exa AI Search API (key-rotating pool).
 
-.. _Exa API: https://docs.exa.ai/
-
-Configuration (yaml)
-=====================
-
-  - name: exa
-    engine: exa
-    api_key: '!env EXA_API_KEY'   # required
-    results_per_page: 10          # optional
-
-Exa returns semantic web results + extracted contents (AI-native retrieval).
+One SearXNG engine, N API accounts. Each request picks the next key via
+round-robin so the free-tier quota of all accounts is shared/balanced.
 """
 
 import json
+import threading
 import typing as t
+from datetime import datetime
 
 from searx.exceptions import SearxEngineAPIException
 from searx.result_types import EngineResults
@@ -33,8 +26,13 @@ about = {
     "results": "JSON",
 }
 
+# List of API keys (accounts). Provided via settings.yml `api_keys:`.
+api_keys: list[str] = []
+# Kept for SearXNG compatibility (require_api_key check).
 api_key: str = ""
-"""API key for Exa (required, from EXA_API_KEY env)."""
+
+_api_idx = 0
+_api_lock = threading.Lock()
 
 categories = ["general", "web", "ai"]
 paging = True
@@ -42,16 +40,24 @@ safesearch = False
 time_range_support = False
 
 results_per_page: int = 10
-"""Maximum number of results per page (default 10)."""
 
 base_url = "https://api.exa.ai/search"
-"""Exa search endpoint."""
 
 
 def init(_):
     """Initialize the engine."""
-    if not api_key:
-        raise SearxEngineAPIException("No API key provided (EXA_API_KEY)")
+    global api_key
+    if not api_keys:
+        raise SearxEngineAPIException("No API keys provided for Exa")
+    api_key = api_keys[0]
+
+
+def _next_key() -> str:
+    global _api_idx
+    with _api_lock:
+        k = api_keys[_api_idx % len(api_keys)]
+        _api_idx += 1
+    return k
 
 
 def request(query: str, params: "OnlineParams") -> None:
@@ -59,15 +65,12 @@ def request(query: str, params: "OnlineParams") -> None:
     params["url"] = base_url
     params["method"] = "POST"
     params["headers"]["Content-Type"] = "application/json"
-    params["headers"]["x-api-key"] = api_key
+    params["headers"]["x-api-key"] = _next_key()
     body: dict[str, t.Any] = {
         "query": query,
         "numResults": results_per_page,
         "type": "keyword",
     }
-    if paging and params["pageno"] > 1:
-        # Exa uses cursor/offset via numResults window; simple page shift
-        body["numResults"] = results_per_page
     params["data"] = json.dumps(body)
 
 
@@ -79,12 +82,18 @@ def response(resp: "SXNG_Response") -> EngineResults:
         url = r.get("url", "")
         if not url:
             continue
+        pd = None
+        if r.get("publishedDate"):
+            try:
+                pd = datetime.fromisoformat(r["publishedDate"].replace("Z", "+00:00"))
+            except Exception:
+                pd = None
         res.add(
             res.types.MainResult(
                 url=url,
                 title=r.get("title", "") or url,
                 content=r.get("text", "") or r.get("summary", ""),
-                publishedDate=__import__("datetime").datetime.fromisoformat(r["publishedDate"].replace("Z","+00:00")) if r.get("publishedDate") else None,
+                publishedDate=pd,
             )
         )
     return res

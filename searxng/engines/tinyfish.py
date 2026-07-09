@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""TinyFish search engine for SearXNG (Unified Search Gateway)."""
+"""TinyFish search engine for SearXNG (key-rotating pool)."""
 
+import threading
 import typing as t
+from urllib.parse import urlencode
 
 from searx.exceptions import SearxEngineAPIException
 from searx.result_types import EngineResults
@@ -19,7 +21,11 @@ about = {
     "results": "JSON",
 }
 
+api_keys: list[str] = []
 api_key: str = ""
+
+_api_idx = 0
+_api_lock = threading.Lock()
 
 categories = ["general", "web", "ai"]
 paging = False
@@ -30,16 +36,25 @@ base_url = "https://api.search.tinyfish.ai"
 
 
 def init(_):
-    if not api_key:
-        raise SearxEngineAPIException("No API key provided for TinyFish")
+    global api_key
+    if not api_keys:
+        raise SearxEngineAPIException("No API keys provided for TinyFish")
+    api_key = api_keys[0]
+
+
+def _next_key() -> str:
+    global _api_idx
+    with _api_lock:
+        k = api_keys[_api_idx % len(api_keys)]
+        _api_idx += 1
+    return k
 
 
 def request(query: str, params: "OnlineParams") -> None:
-    from urllib.parse import urlencode
     qs = urlencode({"query": query, "location": "US", "language": "en"})
     params["url"] = base_url + "?" + qs
     params["method"] = "GET"
-    params["headers"]["X-API-Key"] = api_key
+    params["headers"]["X-API-Key"] = _next_key()
     params["headers"]["Accept"] = "application/json"
 
 
