@@ -22,15 +22,17 @@ botdetection:
   ip_lists:
     pass_searxng_org: false
 
-# ВНИМАНИЕ: при use_default_settings: true блок engines: ПОЛНОСТЬЮ ЗАМЕНЯЕТ
-# дефолтный список движков (не мержится). Перечисляем всё явно.
-#
-# Проблема: duckduckgo (дефолтный) периодически получает CAPTCHA от DDG
-# (SearXNG issue #3927, SearxEngineCaptchaException) -> движок возвращает 0
-# результатов. Поэтому рядом с DDG держим keyless-фоллбэки (mojeek/wiby/
-# marginalia/bing): если DDG в CAPTCHA, остальные всё равно выдают результат,
-# и зависящая от SearXNG логика (например, verify-кросс-проверка в /research)
-# не падает.
+# ВНИМАНИЕ: при use_default_settings: true блок engines: МЕРЖИТСЯ с дефолтным
+# списком движков (не заменяет его целиком). Дефолтные движки (duckduckgo,
+# brave, google, bing, ...) остаются активны; наш блок ДОБАВЛЯЕТ/переопределяет
+# перечисленные. Поэтому рядом с DDG держим keyless-фоллбэки (mojeek/wiby/
+# marginalia/bing/startpage/seznam): если DDG в CAPTCHA (SearXNG issue #3927,
+# SearxEngineCaptchaException, suspended_time может быть до 3600s), остальные
+# всё равно выдают результат, и зависящая от SearXNG логика (/research verify)
+# не падает в unverified. ВАЖНО: при бёрст-тестировании наш IP получает
+# rate-limit сразу у нескольких движков -> временно 0 результатов. Это
+# транзиент, проходит после cooldown; скил корректно возвращает
+# searxng_unavailable (грейсфул-деградация), а не «сломан».
 engines:
   - name: duckduckgo
     engine: duckduckgo
@@ -46,6 +48,12 @@ engines:
     categories: general
   - name: bing
     engine: bing
+    categories: general
+  - name: startpage
+    engine: startpage
+    categories: general
+  - name: seznam
+    engine: seznam
     categories: general
   - name: wikipedia
     engine: wikipedia
