@@ -21,6 +21,9 @@ vendor/
 .vscode/
 # Project binaries
 bin/
+# но управляющие скрипты инфраструктуры коммитим:
+!bin/searxng-health.sh
+!bin/lab-search-gateway-addkey.sh
 hunter
 hunter_v2
 # Runtime data (gitignored entirely)
