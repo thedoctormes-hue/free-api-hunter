@@ -217,7 +217,8 @@ search_tinyfish() {
     local i
 
     local encoded_query
-    query="$query" encoded_query=$(python3 -c "import urllib.parse,os; print(urllib.parse.quote(os.environ.get('query','')))" 2>/dev/null || echo "$query")
+    encoded_query=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$query" 2>/dev/null)
+    [ -z "$encoded_query" ] && encoded_query="$query"
 
     for ((i = 0; i < max_retries; i++)); do
         local key
@@ -255,7 +256,8 @@ search_searxng() {
     log "SearXNG: querying local instance"
 
     local encoded_query
-    query="$query" encoded_query=$(python3 -c "import urllib.parse,os; print(urllib.parse.quote(os.environ.get('query','')))" 2>/dev/null || echo "$query")
+    encoded_query=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$query" 2>/dev/null)
+    [ -z "$encoded_query" ] && encoded_query="$query"
 
     curl -s "http://localhost:8889/search?q=${encoded_query}&format=json&categories=general" \
         --max-time 15 2>/dev/null
@@ -307,7 +309,9 @@ scrape_tinyfish() {
         key=$(get_next_key tinyfish)
 
         local response
-        url="$url" response=$(curl -s "https://api.fetch.tinyfish.ai?url=$(python3 -c "import urllib.parse,os; print(urllib.parse.quote(os.environ.get('url','')))")" \
+        encoded_url=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$url" 2>/dev/null)
+        [ -z "$encoded_url" ] && encoded_url="$url"
+        response=$(curl -s "https://api.fetch.tinyfish.ai?url=${encoded_url}" \
             -H "X-API-Key: ${key}" \
             --max-time 60 2>/dev/null)
 
