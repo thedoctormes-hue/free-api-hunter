@@ -466,17 +466,20 @@ verify_research() {
     local query="$1" count="$2" threshold="${3:-2}"
     local tj; tj=$(search_tavily "$query" "$count")
     local fj; fj=$(search_searxng "$query")
-    echo "$tj" | python3 - "$fj" "$threshold" <<'PY'
-import sys, json
-tj_raw=sys.stdin.read(); fj_raw=sys.argv[1]
+    local tvf; tvf=$(mktemp); printf '%s' "$tj" > "$tvf"
+    local svf; svf=$(mktemp); printf '%s' "$fj" > "$svf"
+    python3 - "$tvf" "$svf" "$threshold" <<'PY'
+import sys, json, os
+tvf, svf = sys.argv[1], sys.argv[2]
 try:
-    thr=int(sys.argv[2])
+    thr = int(sys.argv[3])
 except Exception:
-    thr=2
+    thr = 2
+tj_raw = open(tvf).read(); fj_raw = open(svf).read()
 try:
-    d=json.loads(tj_raw)
+    d = json.loads(tj_raw)
 except Exception:
-    d={"error":"tavily_unavailable_or_invalid"}
+    d = {"error": "tavily_unavailable_or_invalid"}
 def urls(blob):
     try:
         x=json.loads(blob)
@@ -499,6 +502,7 @@ if not verified and "answer" in d:
     d["answer"]="[UNVERIFIED_SYNTHESIS] "+str(d["answer"])
 print(json.dumps(d, ensure_ascii=False))
 PY
+    rm -f "$tvf" "$svf"
 }
 
 # ─── Router ─────────────────────────────────────────────────────
