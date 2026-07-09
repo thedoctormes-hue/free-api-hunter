@@ -19,9 +19,9 @@ vendor/
 # IDE
 .idea/
 .vscode/
-# Project binaries
-bin/
-# но управляющие скрипты инфраструктуры коммитим:
+# Project binaries (ignore local binaries, but keep infra scripts)
+bin/*
+# управляющие скрипты инфраструктуры коммитим:
 !bin/searxng-health.sh
 !bin/lab-search-gateway-addkey.sh
 hunter
