@@ -14,37 +14,29 @@ profile.cov
 go.work
 go.work.sum
 vendor/
-
 # Environment
 .env
-
 # IDE
 .idea/
 .vscode/
-
 # Project binaries
 bin/
 hunter
 hunter_v2
-
 # Runtime data (gitignored entirely)
 data/
-
 # OS
 .DS_Store
 Thumbs.db
-
 # Secrets
 *.key
 *.pem
 *.p12
 configs/manus-keys.json
 configs/*.key
-
 # Python cache
 __pycache__/
 *.pyc
-
 # Output
 output/
 node_modules/
@@ -68,50 +60,23 @@ logs/
 *.swp
 *.swo
 *~
-
 # === Build artifacts ===
-node_modules/
-dist/
-build/
-.next/
 out/
-
 # === Python ===
-__pycache__/
-*.pyc
 *.pyo
-.venv/
 venv/
-.pytest_cache/
-.ruff_cache/
-.tox/
-*.egg-info/
-
 # === IDE ===
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
 # === OS ===
-.DS_Store
-Thumbs.db
-
 # === Logs ===
-*.log
-
 # === Temp ===
-.cache/
-.tmp/
 tmp/
-
 # === Backup artifacts ===
 .backupignore
 hunter_bin
-
 # Search orchestrator secrets (never commit real keys)
 configs/search-keys.yaml
 config/search-keys.yaml
 configs/.key-index-*
 config/.key-index-*
+# runtime adaptive-routing stats (generated)
+configs/.provider-stats.json
