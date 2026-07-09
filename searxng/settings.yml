@@ -1,0 +1,55 @@
+use_default_settings: true
+
+search:
+  formats:
+    - html
+    - csv
+    - json
+    - rss
+
+server:
+  port: 8080
+  bind_address: "0.0.0.0"
+  base_url: false
+  image_proxy: true
+  # Отключаем rate-limit: инстанс self-hosted, дёргает агент с localhost.
+  # localhost уже в trusted_proxies (127.0.0.0/8) по умолчанию.
+  limiter: false
+
+botdetection:
+  ip_limit:
+    link_token: false
+  ip_lists:
+    pass_searxng_org: false
+
+# ВНИМАНИЕ: при use_default_settings: true блок engines: ПОЛНОСТЬЮ ЗАМЕНЯЕТ
+# дефолтный список движков (не мержится). Перечисляем всё явно.
+#
+# Проблема: duckduckgo (дефолтный) периодически получает CAPTCHA от DDG
+# (SearXNG issue #3927, SearxEngineCaptchaException) -> движок возвращает 0
+# результатов. Поэтому рядом с DDG держим keyless-фоллбэки (mojeek/wiby/
+# marginalia/bing): если DDG в CAPTCHA, остальные всё равно выдают результат,
+# и зависящая от SearXNG логика (например, verify-кросс-проверка в /research)
+# не падает.
+engines:
+  - name: duckduckgo
+    engine: duckduckgo
+    categories: general
+  - name: mojeek
+    engine: mojeek
+    categories: general
+  - name: wiby
+    engine: wiby
+    categories: general
+  - name: marginalia
+    engine: marginalia
+    categories: general
+  - name: bing
+    engine: bing
+    categories: general
+  - name: wikipedia
+    engine: wikipedia
+    categories: general
+  - name: wikidata
+    engine: wikidata
+    categories: general

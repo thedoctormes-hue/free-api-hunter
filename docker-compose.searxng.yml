@@ -1,0 +1,24 @@
+# Канонический деплой SearXNG для лаборатории (воспроизводимость).
+# Используется вместо standalone `docker run`, чтобы конфиг версионировался
+# и контейнер авто-перезапускался.
+#
+# Миграция с текущего standalone-контейнера (имя `searxng`, порт 8889):
+#   docker stop searxng && docker rm searxng
+#   docker compose -f docker-compose.searxng.yml up -d
+# settings.yml монтируется из ./searxng/settings.yml (версионирован в репо).
+version: "3.8"
+
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    ports:
+      - "8889:8080"
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/search?q=health&format=json&categories=general"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
