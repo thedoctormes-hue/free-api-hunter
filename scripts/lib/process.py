@@ -157,6 +157,38 @@ def decompose(query):
     return parts[:4]
 
 
+def synthesize(d):
+    """Построить answer из агрегированных результатов, если он не задан провайдером."""
+    if not isinstance(d, dict):
+        return d
+    if d.get('answer'):
+        d.setdefault('_meta', {})
+        d['_meta']['synthesis'] = 'provider'
+        return d
+    results = d.get('results', [])
+    if not results:
+        d['answer'] = None
+        d.setdefault('_meta', {})
+        d['_meta']['synthesis'] = 'no_results'
+        return d
+    top = results[:5]
+    bullets = []
+    for r in top:
+        title = (r.get('title') or '').strip()
+        url = (r.get('url') or '').strip()
+        snip = (r.get('snippet') or r.get('content') or '').strip().replace('\n', ' ')
+        line = f"- {title}" if title else f"- {url}"
+        if snip:
+            line += f": {snip[:220]}"
+        bullets.append(line)
+    header = f"Synthesized from {len(results)} aggregated sources (top {len(top)} shown):"
+    d['answer'] = header + "\n" + "\n".join(bullets)
+    d.setdefault('_meta', {})
+    d['_meta']['synthesis'] = 'generated'
+    d['_meta']['synthesis_source_count'] = len(results)
+    return d
+
+
 def main():
     raw = sys.stdin.read()
     try:
@@ -219,6 +251,9 @@ def main():
         d['_meta']['merged_count'] = len(merged)
         d['_meta']['contradictions'] = detect_contradictions(merged, d.get('query', ''))
         d['_meta']['decomposed'] = True
+        print(json.dumps(d, ensure_ascii=False))
+    elif action == 'synthesize' and isinstance(d, dict):
+        synthesize(d)
         print(json.dumps(d, ensure_ascii=False))
 
 

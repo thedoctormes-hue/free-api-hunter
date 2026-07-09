@@ -413,7 +413,7 @@ print(json.dumps(results, indent=2, ensure_ascii=False))
 deep_research_v2() {
     local query="$1" count="$2"
     local base
-    base=$(deep_research "$query" "$count" | python3 "$LIB" merge)
+    base=$(deep_research "$query" "$count" | python3 "$LIB" merge | python3 "$LIB" synthesize)
 
     local subs_json
     subs_json=$(echo "{\"query\":\"$query\"}" | python3 "$LIB" decompose)
@@ -429,7 +429,7 @@ deep_research_v2() {
             echo "$r" | python3 -c "import sys,json;d=json.loads(sys.stdin.read());print(json.dumps(d.get('results',[]),ensure_ascii=False))" >> "$tmp/subs.txt"
         done
         if [[ -s "$tmp/subs.txt" ]]; then
-            base=$(echo "$base" | python3 "$LIB" merge_subs "$tmp/subs.txt")
+            base=$(echo "$base" | python3 "$LIB" merge_subs "$tmp/subs.txt" | python3 "$LIB" synthesize)
         fi
         rm -rf "$tmp"
     fi
