@@ -85,4 +85,5 @@ config/.key-index-*
 configs/.provider-stats.json
 # Unified Search Gateway secrets (filled by lab-search-gateway-addkey.sh)
 .env.searxng
+searxng/settings.yml
 searxng/engines/__pycache__/
