@@ -1,21 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Engine to search using the Olostep Web Data API (search + extract).
+"""Olostep search engine for SearXNG (key-rotating pool).
 
-.. _Olostep API: https://www.olostep.com/
-
-Configuration (yaml)
-=====================
-
-  - name: olostep
-    engine: olostep
-    api_key: '!env OLOSTEP_API_KEY'   # required
-    results_per_page: 10              # optional
-
-Olostep returns search results + structured extraction (search + scrape).
-NOTE: endpoint/response shape verified against Olostep docs; adjust if API changes.
+Uses Olostep /v1/searches endpoint (AI-powered web search returning
+source links with title + description). One engine, N API accounts.
 """
 
 import json
+import threading
 import typing as t
 
 from searx.exceptions import SearxEngineAPIException
@@ -34,25 +25,34 @@ about = {
     "results": "JSON",
 }
 
+api_keys: list[str] = []
 api_key: str = ""
-"""API key for Olostep (required, from OLOSTEP_API_KEY env)."""
 
-categories = ["general", "web"]
-paging = True
+_api_idx = 0
+_api_lock = threading.Lock()
+
+categories = ["general", "web", "ai"]
+paging = False
 safesearch = False
 time_range_support = False
 
-results_per_page: int = 10
-"""Maximum number of results per page (default 10)."""
-
-# Olostep Search endpoint (verify against current docs if API changes)
-base_url = "https://api.olostep.com/v1/search"
+base_url = "https://api.olostep.com/v1/searches"
 
 
 def init(_):
     """Initialize the engine."""
-    if not api_key:
-        raise SearxEngineAPIException("No API key provided (OLOSTEP_API_KEY)")
+    global api_key
+    if not api_keys:
+        raise SearxEngineAPIException("No API keys provided for Olostep")
+    api_key = api_keys[0]
+
+
+def _next_key() -> str:
+    global _api_idx
+    with _api_lock:
+        k = api_keys[_api_idx % len(api_keys)]
+        _api_idx += 1
+    return k
 
 
 def request(query: str, params: "OnlineParams") -> None:
@@ -60,13 +60,8 @@ def request(query: str, params: "OnlineParams") -> None:
     params["url"] = base_url
     params["method"] = "POST"
     params["headers"]["Content-Type"] = "application/json"
-    params["headers"]["Authorization"] = f"Bearer {api_key}"
-    body: dict[str, t.Any] = {
-        "query": query,
-        "num_results": results_per_page,
-    }
-    if paging and params["pageno"] > 1:
-        body["offset"] = (params["pageno"] - 1) * results_per_page
+    params["headers"]["Authorization"] = "Bearer " + _next_key()
+    body = {"query": query}
     params["data"] = json.dumps(body)
 
 
@@ -74,9 +69,19 @@ def response(resp: "SXNG_Response") -> EngineResults:
     """Process the API response and return results."""
     res = EngineResults()
     data = resp.json()
-    # Olostep wraps results in "results" (or "data"/"organic" depending on call)
-    items = data.get("results", data.get("data", data.get("organic", [])))
-    for r in items:
+    # /v1/searches returns result.json_content as a JSON string
+    jc = data.get("result", {}).get("json_content")
+    if isinstance(jc, str):
+        try:
+            jc = json.loads(jc)
+        except Exception:
+            jc = {}
+    links = []
+    if isinstance(jc, dict):
+        links = jc.get("links", [])
+    elif isinstance(jc, list):
+        links = jc
+    for r in links:
         url = r.get("url", "")
         if not url:
             continue
@@ -84,7 +89,7 @@ def response(resp: "SXNG_Response") -> EngineResults:
             res.types.MainResult(
                 url=url,
                 title=r.get("title", "") or url,
-                content=r.get("text", "") or r.get("snippet", ""),
+                content=r.get("description", "") or r.get("snippet", ""),
             )
         )
     return res
