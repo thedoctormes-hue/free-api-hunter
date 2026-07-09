@@ -80,3 +80,6 @@ configs/.key-index-*
 config/.key-index-*
 # runtime adaptive-routing stats (generated)
 configs/.provider-stats.json
+# Unified Search Gateway secrets (filled by lab-search-gateway-addkey.sh)
+.env.searxng
+searxng/engines/__pycache__/

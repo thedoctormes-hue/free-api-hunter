@@ -61,3 +61,22 @@ engines:
   - name: wikidata
     engine: wikidata
     categories: general
+  # --- Premium API engines (Unified Search Gateway, free-tier keys) ---
+  # Ключи подаются через env (EXA_API_KEY и т.д.) из .env.searxng.
+  # Движок не загрузится, пока env не задан (SearXNG пропустит с warning).
+  - name: exa
+    engine: exa
+    api_key: !env EXA_API_KEY
+    categories: [general, web, ai]
+  - name: serper
+    engine: serper
+    api_key: !env SERPER_API_KEY
+    categories: [general, web]
+  - name: serpapi
+    engine: serpapi
+    api_key: !env SERPAPI_API_KEY
+    categories: [general, web]
+  - name: olostep
+    engine: olostep
+    api_key: !env OLOSTEP_API_KEY
+    categories: [general, web]

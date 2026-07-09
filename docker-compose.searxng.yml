@@ -12,10 +12,12 @@ services:
   searxng:
     image: searxng/searxng:latest
     container_name: searxng
+    env_file: .env.searxng
     ports:
       - "8889:8080"
     volumes:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - ./searxng/engines:/usr/local/searxng/searx/engines:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/search?q=health&format=json&categories=general"]
