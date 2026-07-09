@@ -16,7 +16,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
 SEARXNG = os.environ.get("SEARXNG_URL", "http://localhost:8889/search")
-POOL = os.environ.get("LABSEARCH_POOL", "wiby,marginalia,bing,seznam,exa,wikipedia")
+POOL = os.environ.get("LABSEARCH_POOL", "exa,exa2,exa3,exa4,exa5")
 ORCHESTRATOR = "/root/LabDoctorM/projects/free-api-hunter/scripts/search-orchestrator.sh"
 
 app = Server("lab-search")
