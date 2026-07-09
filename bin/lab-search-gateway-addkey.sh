@@ -1,20 +1,27 @@
 #!/usr/bin/env bash
-# lab-search-gateway-addkey.sh — deploy search provider key(s) + engine(s) into SearXNG.
+# lab-search-gateway-addkey.sh — Unified Search Gateway management.
+#
+# Architecture:
+#   SearXNG + 5 premium API pools (exa/tavily/firecrawl/tinyfish/olostep),
+#   each rotating its API keys internally (round-robin). Plus free built-in
+#   engines (wiby/wikipedia/bing/seznam/mojeek/...).
+#
+# Key rotation: each engine module reads `api_keys: [...]` from settings.yml
+#   and picks the next key per request (threading.Lock + global index).
 #
 # Usage:
-#   # one key (serper/serpapi/olostep, or first exa):
-#   bin/lab-search-gateway-addkey.sh <exa|serper|serpapi|olostep> <API_KEY>
+#   bin/lab-search-gateway-addkey.sh deploy
+#       Copy all engine modules into the container, restart, healthcheck.
+#       Run after `docker compose up -d` recreates the image (modules live
+#       in the container layer, lost on recreate).
 #
-#   # Exa POOL for routing (multiple keys -> exa, exa2, exa3, ...):
-#   bin/lab-search-gateway-addkey.sh exa <KEY1> <KEY2> <KEY3> ...
+#   bin/lab-search-gateway-addkey.sh add-key <provider> <KEY1> [KEY2 ...]
+#       Store key(s) in central keystore + update `api_keys:` list in settings.yml.
+#       provider ∈ {exa,tavily,firecrawl,tinyfish,olostep}
 #
-# What it does:
-#   1. Stores key(s) in /root/.openclaw/.api-keys.json (chmod 600, gitignored) as an array.
-#   2. Copies engine module(s) into the running searxng container.
-#   3. For Exa pool: creates exa / exa2 / exa3 ... engines (one per key) in settings.yml.
-#      For single providers: injects/ appends one engine block.
-#   4. Restarts searxng.
-#   5. Runs the healthcheck.
+#   bin/lab-search-gateway-addkey.sh health
+#       Per-engine + general healthcheck.
+
 set -euo pipefail
 
 KEYSTORE=/root/.openclaw/.api-keys.json
@@ -23,80 +30,73 @@ COMPOSE=/root/LabDoctorM/projects/free-api-hunter/docker-compose.searxng.yml
 HEALTH=/root/LabDoctorM/projects/free-api-hunter/bin/searxng-health.sh
 SETTINGS=/root/LabDoctorM/projects/free-api-hunter/searxng/settings.yml
 
-PROVIDER="${1:-}"
-shift || true
-KEYS=("$@")
+# Engine modules actually deployed (free-tier premium providers).
+MODULES="exa tavily firecrawl tinyfish olostep"
 
-usage() { echo "usage: $0 <exa|serper|serpapi|olostep> <API_KEY> [KEY2 KEY3 ...]"; exit 1; }
-[ -z "$PROVIDER" ] && usage
-[ ${#KEYS[@]} -eq 0 ] && usage
+usage() {
+  echo "usage:"
+  echo "  $0 deploy"
+  echo "  $0 add-key <exa|tavily|firecrawl|tinyfish|olostep> <KEY1> [KEY2 ...]"
+  echo "  $0 health"
+  exit 1
+}
 
-case "$PROVIDER" in
-  exa|serper|serpapi|olostep) ;;
-  *) echo "error: unknown provider '$PROVIDER'"; usage ;;
+cmd="${1:-}"; shift || true
+
+case "$cmd" in
+  deploy)
+    for m in $MODULES; do
+      docker cp "$ENGINES_DIR/$m.py" "searxng:/usr/local/searxng/searx/engines/$m.py"
+    done
+    echo "copied modules: $MODULES"
+    docker compose -f "$COMPOSE" restart searxng
+    sleep 5
+    bash "$HEALTH"
+    ;;
+  add-key)
+    PROVIDER="${1:-}"; shift || true
+    KEYS=("$@")
+    [ -z "$PROVIDER" ] && usage
+    [ ${#KEYS[@]} -eq 0 ] && usage
+    case "$PROVIDER" in
+      exa|tavily|firecrawl|tinyfish|olostep) ;;
+      *) echo "error: unknown provider '$PROVIDER'"; usage ;;
+    esac
+    # 1) store in keystore as array
+    mkdir -p "$(dirname "$KEYSTORE")"
+    [ -f "$KEYSTORE" ] || echo '{}' > "$KEYSTORE"
+    chmod 600 "$KEYSTORE"
+    TMP=$(mktemp)
+    jq --argjson ks "$(printf '%s\n' "${KEYS[@]}" | jq -R . | jq -s .)" ".\"$PROVIDER\" = \$ks" "$KEYSTORE" > "$TMP" && mv "$TMP" "$KEYSTORE"
+    echo "stored ${#KEYS[@]} $PROVIDER key(s) in $KEYSTORE"
+    # 2) update api_keys: list in settings.yml (python+yaml preserves structure)
+    python3 - "$SETTINGS" "$PROVIDER" "${KEYS[@]}" <<'PY'
+import sys, yaml
+path, provider = sys.argv[1], sys.argv[2]
+keys = sys.argv[3:]
+with open(path) as f:
+    cfg = yaml.safe_load(f)
+for e in cfg.get("engines", []):
+    if e.get("name") == provider:
+        e["api_keys"] = keys
+        print(f"updated api_keys for {provider} ({len(keys)} keys)")
+        break
+else:
+    cfg.setdefault("engines", []).append({
+        "name": provider, "engine": provider, "shortcut": provider[:2],
+        "api_keys": keys, "categories": ["general", "web", "ai"],
+    })
+    print(f"appended {provider} engine block")
+with open(path, "w") as f:
+    yaml.safe_dump(cfg, f, sort_keys=False, default_flow_style=False)
+PY
+    # 3) restart + healthcheck
+    docker compose -f "$COMPOSE" restart searxng
+    sleep 5
+    bash "$HEALTH"
+    ;;
+  health)
+    bash "$HEALTH"
+    ;;
+  *) usage ;;
 esac
-
-# 1) store key(s) as array in central keystore (chmod 600)
-mkdir -p "$(dirname "$KEYSTORE")"
-[ -f "$KEYSTORE" ] || echo '{}' > "$KEYSTORE"
-chmod 600 "$KEYSTORE"
-TMP=$(mktemp)
-jq --argjson ks "$(printf '%s\n' "${KEYS[@]}" | jq -R . | jq -s .)" ".\"$PROVIDER\" = \$ks" "$KEYSTORE" > "$TMP" && mv "$TMP" "$KEYSTORE"
-echo "stored ${#KEYS[@]} $PROVIDER key(s) in $KEYSTORE"
-
-# 2) copy ALL engine modules into container (folder NOT mounted, to avoid
-#    shadowing SearXNG's built-in engines). docker cp writes into the
-#    container layer; survives `restart`, lost on `up -d` recreate (re-run).
-for f in "$ENGINES_DIR"/*.py; do
-  [ -f "$f" ] || continue
-  docker cp "$f" searxng:/usr/local/searxng/searx/engines/"$(basename "$f")"
-done
-echo "copied engine modules -> searxng container"
-
-# 3) inject engine block(s) into settings.yml
-if [ "$PROVIDER" = "exa" ] && [ ${#KEYS[@]} -gt 1 ]; then
-  # POOL: exa, exa2, exa3 ... (one engine per key)
-  i=1
-  for k in "${KEYS[@]}"; do
-    ENG=$([ "$i" -eq 1 ] && echo "exa" || echo "exa$i")
-    if ! grep -q "name: $ENG$" "$SETTINGS"; then
-      cat >> "$SETTINGS" <<EOF
-
-  - name: $ENG
-    engine: $ENG
-    api_key: $k
-    categories: [general, web, ai]
-EOF
-      echo "appended $ENG engine block (key #$i)"
-    else
-      # update existing key inline
-      sed -i "/name: $ENG$/,/api_key:/ s|api_key:.*|api_key: $k|" "$SETTINGS"
-      echo "updated $ENG key inline"
-    fi
-    i=$((i + 1))
-  done
-else
-  # SINGLE engine (first key)
-  k="${KEYS[0]}"
-  if grep -q "name: $PROVIDER$" "$SETTINGS"; then
-    sed -i "/name: $PROVIDER$/,/api_key:/ s|api_key:.*|api_key: $k|" "$SETTINGS"
-    echo "updated $PROVIDER key inline"
-  else
-    cat >> "$SETTINGS" <<EOF
-
-  - name: $PROVIDER
-    engine: $PROVIDER
-    api_key: $k
-    categories: [general, web]
-EOF
-    echo "appended $PROVIDER engine block"
-  fi
-fi
-
-# 4) restart searxng to load engine(s) + key(s)
-docker compose -f "$COMPOSE" restart searxng
-echo "restarted searxng"
-
-# 5) healthcheck
-sleep 5
-bash "$HEALTH" || echo "WARN: healthcheck failed - check 'docker logs searxng'"
