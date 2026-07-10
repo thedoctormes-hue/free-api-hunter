@@ -2,7 +2,17 @@
   "_meta": {
     "note": "KRV-Validator endpoint map. 'verified:true' = endpoint confirmed by operator (trust live_status). 'verified:false' = HYPOTHESIS, must be confirmed before trusting live_status. PAT-005: unknown endpoints MUST stay auth_type=unknown / base_url='' so the validator writes live_status='unknown' rather than guessing.",
     "updated": "2026-07-10",
-    "vault_providers": ["cerebras", "cloudflare", "cohere", "elevenlabs", "manus", "mistral", "ocr-space", "openrouter", "pollinations"]
+    "vault_providers": [
+      "cerebras",
+      "cloudflare",
+      "cohere",
+      "elevenlabs",
+      "manus",
+      "mistral",
+      "ocr-space",
+      "openrouter",
+      "pollinations"
+    ]
   },
   "providers": {
     "openrouter": {
@@ -33,11 +43,11 @@
       "instructions": "HYPOTHESIS: Mistral AI /v1/models. Confirm."
     },
     "cerebras": {
-      "base_url": "https://inference.cerebras.ai/api/v1",
+      "base_url": "https://api.cerebras.ai/v1",
       "auth_type": "bearer",
       "models_path": "/models",
       "method": "GET",
-      "verified": false,
+      "verified": true,
       "registry_name": "Cerebras",
       "instructions": "HYPOTHESIS: Cerebras inference /v1/models. Confirm base URL."
     },
@@ -85,6 +95,15 @@
       "verified": false,
       "registry_name": "Manus",
       "instructions": "UNKNOWN: Manus is not a standard LLM API with /models. Left unknown per PAT-005; needs a dedicated probe or exclusion."
+    },
+    "cerebras-key": {
+      "base_url": "https://api.cerebras.ai/v1",
+      "auth_type": "bearer",
+      "models_path": "/models",
+      "method": "GET",
+      "verified": true,
+      "registry_name": "Cerebras",
+      "instructions": "ALIAS: keys dropped as 'cerebras key.md' stored under 'cerebras-key'. Same endpoint as 'cerebras'."
     }
   }
 }

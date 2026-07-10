@@ -170,7 +170,7 @@ func ValidateKey(provider, keyFile string, cfg EndpointConfig, probe bool, regis
 		return rec, nil
 	}
 	realKey := strings.TrimSpace(string(secret))
-	endpoint := strings.TrimRight(cfg.BaseURL, "/") + cfg.ModelsPath
+	endpoint := strings.TrimRight(cfg.BaseURL, "/")
 
 	// Живая проба КОНКРЕТНОГО секрета из этого файла (PAT-005: не default-ключ).
 	res := verifier.VerifyAPIKeyWithSecret(provider, endpoint, realKey)
