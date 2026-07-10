@@ -30,7 +30,7 @@ var vaultBase = "/root/LabDoctorM/vault/free-api-hunter"
 const yandexRate = 31 * time.Second // Yandex: <=1 запрос / 30с
 const defaultYandexBin = "/root/LabDoctorM/projects/DoctorM_and_Ai/bin/yandex.sh"
 const defaultDiskDir = "free-api-hunter/keys"
-const defaultEndpoints = "config/validator_endpoints.json"
+const defaultEndpoints = "/root/LabDoctorM/projects/free-api-hunter/config/validator_endpoints.json"
 
 // Options — параметры прогона keydrop.
 type Options struct {

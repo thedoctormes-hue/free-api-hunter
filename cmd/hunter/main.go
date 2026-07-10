@@ -408,7 +408,7 @@ func runKeyDrop(args []string) {
 	dataDir := fs.String("data-dir", "data", "Каталог с free-api-hunter.db (SQLite)")
 	diskDir := fs.String("disk-dir", "free-api-hunter/keys", "Папка на Яндекс Диске (отн. корня Диска)")
 	yandexBin := fs.String("yandex", "/root/LabDoctorM/projects/DoctorM_and_Ai/bin/yandex.sh", "Путь к yandex.sh")
-	endpoints := fs.String("endpoints", "config/validator_endpoints.json", "Карта endpoint'ов для верификации")
+	endpoints := fs.String("endpoints", "/root/LabDoctorM/projects/free-api-hunter/config/validator_endpoints.json", "Карта endpoint'ов для верификации")
 	keep := fs.Bool("keep", false, "Не удалять .md с Диска после обработки")
 	addedBy := fs.String("added-by", "keydrop", "Кто добавил ключ (аудит)")
 	_ = fs.Parse(args)
