@@ -2,8 +2,8 @@
 //
 // Spike-прототип. Итерирует ключи в vault
 // (/root/LabDoctorM/vault/free-api-hunter/<provider>/api.key*), для каждого
-// делает живую пробу провайдера (переиспользуя verifier.VerifyAPIKey /
-// verifier.ExtractKeyInfo) и пишет live_status в SQLite-таблицу "keys".
+// делает живую пробу провайдера (переиспользуя verifier.VerifyAPIKeyWithSecret)
+// и пишет live_status в SQLite-таблицу "keys".
 //
 // live_status ∈ {valid, expired, rate_limited, unknown} по StatusCode:
 //   200 -> valid, 401/403 -> expired, 429 -> rate_limited, else -> unknown.
