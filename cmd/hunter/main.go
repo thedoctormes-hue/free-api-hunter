@@ -13,6 +13,7 @@ import (
 	"free-api-hunter/internal/cf"
 	"free-api-hunter/internal/filter"
 	"free-api-hunter/internal/models"
+	"free-api-hunter/internal/notify"
 	"free-api-hunter/internal/ocr"
 	"free-api-hunter/internal/output"
 	"free-api-hunter/internal/pollinations"
@@ -20,6 +21,7 @@ import (
 	"free-api-hunter/internal/storage"
 	"free-api-hunter/internal/tts"
 	"free-api-hunter/internal/verifier"
+	"free-api-hunter/internal/validator"
 )
 
 var logger = log.New(os.Stderr, "[hunter] ", log.LstdFlags)
@@ -27,6 +29,10 @@ var logger = log.New(os.Stderr, "[hunter] ", log.LstdFlags)
 // Version — устанавливается через ldflags при сборке
 // go build -ldflags "-X main.Version=$(git describe --tags --always)" -o hunter cmd/hunter/main.go
 var Version = "dev"
+
+// defaultPendingReviewPath — контрактный файл, который Мангуст читает в heartbeat.
+// Не содержит секретов (только URL источников).
+const defaultPendingReviewPath = "/root/LabDoctorM/projects/free-api-hunter/data/pending_review.json"
 
 // Config — загруженная конфигурация источников
 type Config struct {
@@ -75,6 +81,33 @@ type ProviderConfig struct {
 }
 
 func main() {
+	// Subcommand dispatch — must run before flag.Parse so the leading
+	// subcommand token is stripped before the default flag set is parsed.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "notify":
+			os.Args = append([]string{os.Args[0]}, os.Args[2:]...)
+			runNotify()
+			return
+		case "triage-set":
+			runTriageSet(os.Args[2:])
+			return
+		case "triage-apply":
+			runTriageApply(os.Args[2:])
+			return
+		case "validate-keys":
+			runValidateKeys(os.Args[2:])
+			return
+		case "scan":
+			os.Args = append([]string{os.Args[0]}, os.Args[2:]...)
+		case "help", "-h", "--help":
+			printUsage()
+			return
+		default:
+			// Unknown first token: treat the rest as flags for the scan pipeline.
+		}
+	}
+
 	dryRun := flag.Bool("dry-run", false, "Не сохранять результаты")
 	source := flag.String("source", "", "Сканировать только конкретный источник")
 	verify := flag.Bool("verify", false, "Верифицировать провайдеров")
@@ -85,6 +118,8 @@ func main() {
 	apiAddr := flag.String("api", "", "Запустить HTTP API сервер на указанном адресе (напр. :8080)")
 	cfVerify := flag.Bool("cf-verify", false, "Верифицировать Cloudflare Workers AI аккаунты")
 	cfConfigPath := flag.String("cf-config", "config/cf_accounts.json", "Путь к конфигу CF аккаунтов")
+	dataDir := flag.String("data-dir", "data", "Каталог с free-api-hunter.db (SQLite)")
+	bridge := flag.Bool("bridge", false, "После скана дописать новые находки в pending_review.json")
 	flag.Parse()
 
 	if *showVersion {
@@ -105,7 +140,7 @@ func main() {
 	logger.Printf("Free API Hunter %s starting...", Version)
 
 	// 0. Init database
-	if err := storage.InitDB(""); err != nil {
+	if err := storage.InitDB(*dataDir); err != nil {
 		logger.Fatalf("Database init failed: %v", err)
 	}
 	defer storage.CloseDB()
@@ -144,6 +179,16 @@ func main() {
 	}
 
 	logger.Println("Scan completed.")
+
+	// 6a. Bridge new findings into pending_review.json for the Mongoose agent.
+	if *bridge {
+		added, err := notify.BridgePendingReview(defaultPendingReviewPath)
+		if err != nil {
+			logger.Printf("Bridge to pending_review.json failed: %v", err)
+		} else {
+			logger.Printf("Bridge: added %d new finding(s) to %s", added, defaultPendingReviewPath)
+		}
+	}
 
 	// Save scan history
 	if !*dryRun {
@@ -284,6 +329,108 @@ func saveResults(providers []*models.Provider, findings []models.Finding) {
 		logger.Printf("Failed to save findings: %v", err)
 	}
 	logger.Println("Results saved to data/")
+}
+
+// runNotify — подкоманда `hunter notify`: мостит новые находки из БД в
+// pending_review.json (контракт Мангуста). Существующие записи, включая
+// reviewed:true, сохраняются; добавляются только новые (по source URL).
+func runNotify() {
+	fs := flag.NewFlagSet("notify", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "data", "Каталог с free-api-hunter.db (SQLite)")
+	outPath := fs.String("out", defaultPendingReviewPath, "Путь к pending_review.json")
+	dryRun := fs.Bool("dry-run", false, "Не записывать, только сообщить сколько добавится")
+	_ = fs.Parse(os.Args[1:])
+
+	if err := storage.InitDB(*dataDir); err != nil {
+		logger.Fatalf("Database init failed: %v", err)
+	}
+	defer storage.CloseDB()
+
+	if *dryRun {
+		added, _, err := notify.ComputeBridge(*outPath)
+		if err != nil {
+			logger.Fatalf("Compute bridge failed: %v", err)
+		}
+		logger.Printf("Dry run: %d new finding(s) would be added to %s", added, *outPath)
+		return
+	}
+
+	added, err := notify.BridgePendingReview(*outPath)
+	if err != nil {
+		logger.Fatalf("Bridge failed: %v", err)
+	}
+	logger.Printf("Added %d new finding(s) to %s", added, *outPath)
+}
+
+// runTriageSet — подкоманда `hunter triage-set`: записывает вердикт человека
+// в pending_review.json (КRV П.1/П.2). НЕ вызывает Яндекс — исполнение
+// откладывается до ночного `hunter triage-apply` (systemd-таймер).
+func runTriageSet(args []string) {
+	fs := flag.NewFlagSet("triage-set", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "/root/LabDoctorM/projects/free-api-hunter/data", "Каталог данных (data/)")
+	index := fs.Int("index", 0, "1-based индекс элемента в pending_review.json")
+	verdict := fs.String("verdict", "", "verdict: rejected|backlog|already_in_use|confirmed (алиасы not_confirmed|not_working_rf → rejected)")
+	source := fs.String("source", "", "матч по Source вместо --index")
+	fs.Parse(args)
+
+	if *verdict == "" {
+		logger.Fatalf("triage-set: --verdict обязателен")
+	}
+	if err := notify.TriageSet(*dataDir, *index, *verdict, *source); err != nil {
+		logger.Fatalf("triage-set failed: %v", err)
+	}
+	logger.Printf("triage-set: OK (index=%d source=%q verdict=%s)", *index, *source, *verdict)
+}
+
+// runTriageApply — подкоманда `hunter triage-apply`: исполняет записанные
+// вердикты (КRV П.1/П.2): rejected → denylist (rejected.json), backlog →
+// Яндекс Календарь (задача + событие). Предназначен для ночного systemd-таймера.
+func runTriageApply(args []string) {
+	fs := flag.NewFlagSet("triage-apply", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "/root/LabDoctorM/projects/free-api-hunter/data", "Каталог данных (data/)")
+	dryRun := fs.Bool("dry-run", false, "Не вызывать yandex.sh, только логировать что создалось бы")
+	fs.Parse(args)
+
+	if err := notify.TriageApply(*dataDir, *dryRun); err != nil {
+		logger.Fatalf("triage-apply failed: %v", err)
+	}
+}
+
+// runValidateKeys — подкоманда `hunter validate-keys`: живая валидация
+// API-ключей из vault (spike/krv-validator). Пишет live_status в таблицу "keys".
+func runValidateKeys(args []string) {
+	fs := flag.NewFlagSet("validate-keys", flag.ExitOnError)
+	check := fs.Bool("check", false, "Dry-run: проверить конфиг/схему БД без сетевых вызовов")
+	dryRun := fs.Bool("dry-run", false, "Не делать live-пробы и не писать в БД")
+	dataDir := fs.String("data-dir", "data", "Директория данных/БД")
+	endpoints := fs.String("endpoints", "configs/validator_endpoints.json", "Путь к карте endpoint'ов")
+	addedBy := fs.String("added-by", "krv-validator", "Кто добавил записи")
+	fs.Parse(args)
+
+	if *check {
+		*dryRun = true
+	}
+	if err := validator.Run(validator.Config{
+		DataDir:       *dataDir,
+		EndpointsPath: *endpoints,
+		DryRun:        *dryRun,
+		AddedBy:       *addedBy,
+	}); err != nil {
+		logger.Fatalf("validate-keys failed: %v", err)
+	}
+}
+
+// printUsage — справка по подкомандам.
+func printUsage() {
+	fmt.Fprintln(os.Stderr, "Free API Hunter "+Version)
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "Usage:")
+	fmt.Fprintln(os.Stderr, "  hunter [flags] scan     Run discovery scan (default)")
+	fmt.Fprintln(os.Stderr, "  hunter notify [-data-dir D] [-out P] [-dry-run]   Bridge findings to pending_review.json")
+	fmt.Fprintln(os.Stderr, "  hunter triage-set [-data-dir D] -index N|-source S -verdict V   Record a human verdict (writes file only)")
+	fmt.Fprintln(os.Stderr, "  hunter triage-apply [-data-dir D] [-dry-run]   Execute recorded verdicts (denylist + Yandex)")
+	fmt.Fprintln(os.Stderr, "  hunter validate-keys [-data-dir D] [-endpoints P] [-dry-run] [-check]   Live-validate vault keys")
+	fmt.Fprintln(os.Stderr, "  hunter help            Show this help")
 }
 
 // sendAlert loads alert config and sends a Telegram report.
@@ -680,7 +827,7 @@ func runCFPipeline(cfConfigPath string, noAlerts bool, alertConfigPath string) {
 func saveCFData(results []*cf.VerifyResult) {
 	type cfData struct {
 		Results   []*cf.VerifyResult `json:"results"`
-	UpdatedAt string `json:"updated_at"`
+		UpdatedAt string             `json:"updated_at"`
 	}
 
 	data := cfData{

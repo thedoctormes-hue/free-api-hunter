@@ -24,7 +24,7 @@ bin/*
 # управляющие скрипты инфраструктуры коммитим:
 !bin/searxng-health.sh
 !bin/lab-search-gateway-addkey.sh
-hunter
+/hunter
 hunter_v2
 # Runtime data (gitignored entirely)
 data/
@@ -87,3 +87,4 @@ configs/.provider-stats.json
 .env.searxng
 searxng/settings.yml
 searxng/engines/__pycache__/
+/bin/

@@ -49,6 +49,22 @@ func runMigrations(db *sql.DB) error {
 			created_at TEXT NOT NULL DEFAULT '',
 			notes TEXT NOT NULL DEFAULT ''
 		)`,
+		// KRV-Validator: живая валидация ключей из vault (spike/krv-validator).
+		// Отличается от api_keys: хранит именно LIVE-статус конкретного файла ключа.
+		`CREATE TABLE IF NOT EXISTS "keys" (
+			provider TEXT NOT NULL DEFAULT '',
+			key_id TEXT NOT NULL PRIMARY KEY,
+			vault_path TEXT NOT NULL DEFAULT '',
+			registry_status TEXT NOT NULL DEFAULT 'unknown',
+			live_status TEXT NOT NULL DEFAULT 'unknown',
+			last_validated TEXT,
+			models TEXT NOT NULL DEFAULT '[]',
+			auth_type TEXT NOT NULL DEFAULT 'unknown',
+			base_url TEXT NOT NULL DEFAULT '',
+			instructions TEXT NOT NULL DEFAULT '',
+			added_by TEXT NOT NULL DEFAULT '',
+			added_at TEXT NOT NULL DEFAULT ''
+		)`,
 		`CREATE TABLE IF NOT EXISTS key_pool (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			key_hash TEXT NOT NULL DEFAULT '',
@@ -78,6 +94,8 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_findings_filtered ON findings(filtered_out)`,
 		`CREATE INDEX IF NOT EXISTS idx_api_keys_provider ON api_keys(provider_name)`,
 		`CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(is_active)`,
+		`CREATE INDEX IF NOT EXISTS idx_keys_provider ON "keys"(provider)`,
+		`CREATE INDEX IF NOT EXISTS idx_keys_live ON "keys"(live_status)`,
 	}
 
 	for _, q := range queries {

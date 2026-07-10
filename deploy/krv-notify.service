@@ -1,0 +1,9 @@
+[Unit]
+Description=KRV discovery bridge: findings -> pending_review.json
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/root/LabDoctorM/projects/free-api-hunter/bin/hunter notify -data-dir /root/LabDoctorM/projects/free-api-hunter/data -out /root/LabDoctorM/projects/free-api-hunter/data/pending_review.json
+Nice=10

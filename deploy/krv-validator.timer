@@ -1,0 +1,15 @@
+[Unit]
+Description=KRV-Validator timer: live API-key validation every 6h
+Documentation=https://github.com/LabDoctorM/free-api-hunter (spike/krv-validator)
+
+[Timer]
+# Каждые 6 часов (требование задачи).
+OnCalendar=*-*-* 00/6:00:00
+# Догоняющий запуск, если хост был выключен
+Persistent=true
+# Небольшая случайная задержка, чтобы не все агенты стучались одновременно
+RandomizedDelaySec=300
+Unit=krv-validator.service
+
+[Install]
+WantedBy=timers.target

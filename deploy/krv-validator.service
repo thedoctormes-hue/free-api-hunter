@@ -1,0 +1,31 @@
+[Unit]
+Description=KRV-Validator: live validation of free-api-hunter API keys
+Documentation=https://github.com/LabDoctorM/free-api-hunter (spike/krv-validator)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Бинарь hunter собирается из ветки spike/krv-validator:
+#   go build -o /usr/local/bin/hunter ./cmd/hunter
+# Запуск подкомандой validate-keys (пишет live_status в SQLite data/free-api-hunter.db).
+ExecStart=/usr/local/bin/hunter validate-keys --data-dir /root/LabDoctorM/projects/free-api-hunter/data
+# Dry-run (без сети/записи) для проверки:
+# ExecStart=/usr/local/bin/hunter validate-keys --check --data-dir /root/LabDoctorM/projects/free-api-hunter/data
+
+# Безопасность (черновик): валидатор только читает vault и пишет в локальную БД.
+User=root
+Group=root
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/root/LabDoctorM/projects/free-api-hunter/data /root/LabDoctorM/vault/free-api-hunter
+ProtectHome=true
+PrivateTmp=true
+
+# Логи через journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=krv-validator
+
+[Install]
+WantedBy=multi-user.target
