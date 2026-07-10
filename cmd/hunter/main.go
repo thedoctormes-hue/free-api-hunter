@@ -89,6 +89,12 @@ func main() {
 			os.Args = append([]string{os.Args[0]}, os.Args[2:]...)
 			runNotify()
 			return
+		case "triage-set":
+			runTriageSet(os.Args[2:])
+			return
+		case "triage-apply":
+			runTriageApply(os.Args[2:])
+			return
 		case "validate-keys":
 			runValidateKeys(os.Args[2:])
 			return
@@ -356,6 +362,40 @@ func runNotify() {
 	logger.Printf("Added %d new finding(s) to %s", added, *outPath)
 }
 
+// runTriageSet — подкоманда `hunter triage-set`: записывает вердикт человека
+// в pending_review.json (КRV П.1/П.2). НЕ вызывает Яндекс — исполнение
+// откладывается до ночного `hunter triage-apply` (systemd-таймер).
+func runTriageSet(args []string) {
+	fs := flag.NewFlagSet("triage-set", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "/root/LabDoctorM/projects/free-api-hunter/data", "Каталог данных (data/)")
+	index := fs.Int("index", 0, "1-based индекс элемента в pending_review.json")
+	verdict := fs.String("verdict", "", "verdict: rejected|backlog|already_in_use|confirmed (алиасы not_confirmed|not_working_rf → rejected)")
+	source := fs.String("source", "", "матч по Source вместо --index")
+	fs.Parse(args)
+
+	if *verdict == "" {
+		logger.Fatalf("triage-set: --verdict обязателен")
+	}
+	if err := notify.TriageSet(*dataDir, *index, *verdict, *source); err != nil {
+		logger.Fatalf("triage-set failed: %v", err)
+	}
+	logger.Printf("triage-set: OK (index=%d source=%q verdict=%s)", *index, *source, *verdict)
+}
+
+// runTriageApply — подкоманда `hunter triage-apply`: исполняет записанные
+// вердикты (КRV П.1/П.2): rejected → denylist (rejected.json), backlog →
+// Яндекс Календарь (задача + событие). Предназначен для ночного systemd-таймера.
+func runTriageApply(args []string) {
+	fs := flag.NewFlagSet("triage-apply", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "/root/LabDoctorM/projects/free-api-hunter/data", "Каталог данных (data/)")
+	dryRun := fs.Bool("dry-run", false, "Не вызывать yandex.sh, только логировать что создалось бы")
+	fs.Parse(args)
+
+	if err := notify.TriageApply(*dataDir, *dryRun); err != nil {
+		logger.Fatalf("triage-apply failed: %v", err)
+	}
+}
+
 // runValidateKeys — подкоманда `hunter validate-keys`: живая валидация
 // API-ключей из vault (spike/krv-validator). Пишет live_status в таблицу "keys".
 func runValidateKeys(args []string) {
@@ -387,6 +427,8 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "Usage:")
 	fmt.Fprintln(os.Stderr, "  hunter [flags] scan     Run discovery scan (default)")
 	fmt.Fprintln(os.Stderr, "  hunter notify [-data-dir D] [-out P] [-dry-run]   Bridge findings to pending_review.json")
+	fmt.Fprintln(os.Stderr, "  hunter triage-set [-data-dir D] -index N|-source S -verdict V   Record a human verdict (writes file only)")
+	fmt.Fprintln(os.Stderr, "  hunter triage-apply [-data-dir D] [-dry-run]   Execute recorded verdicts (denylist + Yandex)")
 	fmt.Fprintln(os.Stderr, "  hunter validate-keys [-data-dir D] [-endpoints P] [-dry-run] [-check]   Live-validate vault keys")
 	fmt.Fprintln(os.Stderr, "  hunter help            Show this help")
 }

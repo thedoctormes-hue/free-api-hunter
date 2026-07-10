@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"free-api-hunter/internal/models"
 	"free-api-hunter/internal/storage"
@@ -35,6 +36,14 @@ type PendingItem struct {
 	FoundAt  string `json:"found_at"`
 	Reviewed bool   `json:"reviewed"`
 	Verdict  string `json:"verdict"`
+
+	// KRV П.1/П.2 triage fields (added without breaking the Mongoose contract:
+	// the agent only reads the fields it knows; these are optional extras).
+	RejectedMarked bool   `json:"rejected_marked"` // source pushed to denylist (rejected.json)
+	YandexSynced   bool   `json:"yandex_synced"`   // backlog pushed to Yandex Calendar
+	YandexTaskUID  string `json:"yandex_task_uid"` // UID of the created VTODO task
+	YandexEventUID string `json:"yandex_event_uid"` // UID of the created VEVENT
+	ReviewedAt     string `json:"reviewed_at"`     // ISO timestamp of the verdict
 }
 
 // LoadPendingReview reads pending_review.json. A missing file is treated as an
@@ -137,8 +146,16 @@ func AppendNewFindings(existing PendingReview, findings []*models.Finding) (Pend
 // ComputeBridge loads the existing pending_review.json and the findings from
 // the (already-initialized) DB, and returns the merged structure plus the
 // number of new items — WITHOUT writing to disk. Useful for dry runs.
+//
+// KRV П.1: before appending, findings whose source URL is already present in
+// data/rejected.json (the denylist maintained by triage-apply) are dropped so
+// rejected findings are never re-offered to the human reviewer.
 func ComputeBridge(outPath string) (int, PendingReview, error) {
 	existing, err := LoadPendingReview(outPath)
+	if err != nil {
+		return 0, existing, err
+	}
+	rejected, err := loadRejected(rejectedFilePath(filepath.Dir(outPath)))
 	if err != nil {
 		return 0, existing, err
 	}
@@ -146,7 +163,15 @@ func ComputeBridge(outPath string) (int, PendingReview, error) {
 	if err != nil {
 		return 0, existing, fmt.Errorf("load findings from DB: %w", err)
 	}
-	updated, added := AppendNewFindings(existing, findings)
+	// П.1 denylist: skip findings already in rejected.json.
+	filtered := make([]*models.Finding, 0, len(findings))
+	for _, f := range findings {
+		if rejected[f.URL] {
+			continue
+		}
+		filtered = append(filtered, f)
+	}
+	updated, added := AppendNewFindings(existing, filtered)
 	return added, updated, nil
 }
 
@@ -165,6 +190,73 @@ func BridgePendingReview(outPath string) (int, error) {
 		return added, err
 	}
 	return added, nil
+}
+
+// rejectedFilePath returns the path to rejected.json given the data dir that
+// holds pending_review.json (they live side by side in data/).
+func rejectedFilePath(dataDir string) string {
+	return filepath.Join(dataDir, "rejected.json")
+}
+
+// loadRejected reads data/rejected.json (a plain JSON array of source URL
+// strings). A missing file is treated as an empty denylist. The result is a
+// set for O(1) membership tests.
+func loadRejected(path string) (map[string]bool, error) {
+	set := make(map[string]bool)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return set, nil
+		}
+		return set, fmt.Errorf("read rejected.json: %w", err)
+	}
+	var urls []string
+	if err := json.Unmarshal(data, &urls); err != nil {
+		return set, fmt.Errorf("parse rejected.json: %w", err)
+	}
+	for _, u := range urls {
+		if u != "" {
+			set[u] = true
+		}
+	}
+	return set, nil
+}
+
+// saveRejected writes the denylist set back as a sorted JSON array of strings.
+func saveRejected(path string, set map[string]bool) error {
+	urls := make([]string, 0, len(set))
+	for u := range set {
+		urls = append(urls, u)
+	}
+	sort.Strings(urls) // deterministic, diff-friendly file
+	b, err := json.MarshalIndent(urls, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal rejected.json: %w", err)
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("mkdir for rejected.json: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, ".rejected_*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temp rejected.json: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write temp rejected.json: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp rejected.json: %w", err)
+	}
+	if err := os.Chmod(tmpName, 0644); err != nil {
+		return fmt.Errorf("chmod temp rejected.json: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("rename rejected.json: %w", err)
+	}
+	return nil
 }
 
 // writeAtomic serializes data and replaces outPath atomically via a temp file
