@@ -136,6 +136,7 @@ func TriageApply(dataDir string, dryRun bool) error {
 	dueZ := startZ
 
 	changed := false
+	createdLinks := map[string][2]string{} // canonical link -> [taskUID, eventUID] (dedup)
 
 	// throttle ensures ≥30s between Yandex calls (rate limit is 1 req / 30s).
 	firstCall := true
@@ -172,8 +173,20 @@ func TriageApply(dataDir string, dryRun bool) error {
 			if it.YandexSynced {
 				continue
 			}
-			title := deriveTitle(it.Source)
 			link := extractLink(it)
+
+			// De-duplicate backlog items that resolve to the same canonical
+			// link (e.g. several badge/playground URLs of one GitHub repo).
+			if uids, ok := createdLinks[link]; ok {
+				it.YandexTaskUID = uids[0]
+				it.YandexEventUID = uids[1]
+				it.YandexSynced = true
+				changed = true
+				log.Printf("[triage] #%d backlog deduped to existing Yandex entry (link=%s)", i+1, link)
+				continue
+			}
+
+			title := deriveTitle(it)
 			desc := cleanText(it.WhyFree) + "\n\nСсылка: " + link
 
 			if dryRun {
@@ -181,6 +194,7 @@ func TriageApply(dataDir string, dryRun bool) error {
 				fmt.Printf("  title: %s\n", title)
 				fmt.Printf("  link:  %s\n", link)
 				fmt.Printf("  desc:  %s\n", desc)
+				createdLinks[link] = [2]string{"<dry-run>", "<dry-run>"}
 				continue
 			}
 
@@ -197,6 +211,7 @@ func TriageApply(dataDir string, dryRun bool) error {
 			it.YandexEventUID = eventUID
 			it.YandexSynced = true
 			changed = true
+			createdLinks[link] = [2]string{taskUID, eventUID}
 			log.Printf("[triage] #%d backlog synced to Yandex (task=%s event=%s)", i+1, taskUID, eventUID)
 			continue
 		}
@@ -244,34 +259,62 @@ func parseUID(out string) string {
 	return m[1]
 }
 
-// deriveTitle produces a human-friendly calendar title from a source URL:
-//   - modelscope.cn  -> "modelscope API-Inference"
-//   - github.com/o/r -> "o/r"
-//   - else           -> host
-func deriveTitle(source string) string {
-	if strings.Contains(source, "modelscope.cn") {
+// deriveTitle produces a human-friendly calendar title from a finding:
+//   - github.com/o/r (canonical link) -> "o/r"
+//   - modelscope.cn                  -> "modelscope API-Inference"
+//   - else                           -> host of the link
+func deriveTitle(it *PendingItem) string {
+	link := extractLink(it)
+	if strings.Contains(link, "modelscope.cn") {
 		return "modelscope API-Inference"
 	}
-	if m := githubRe.FindStringSubmatch(source); m != nil {
+	if m := githubRe.FindStringSubmatch(link); m != nil {
 		return m[1] + "/" + m[2]
 	}
-	if u, err := url.Parse(source); err == nil && u.Host != "" {
+	if u, err := url.Parse(link); err == nil && u.Host != "" {
 		return u.Host
 	}
-	return source
+	return link
+}
+
+// canonicalRepo finds a GitHub repository slug anywhere in the finding's
+// source or why_free and returns the canonical https://github.com/<o>/<r> URL.
+// This collapses badge / github.io / star-history / raw URLs that all point at
+// the same repository into ONE canonical link (so the backlog groups cleanly).
+func canonicalRepo(it *PendingItem) string {
+	text := it.Source + " " + it.WhyFree
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`github\.com/([\w.-]+)/([\w.-]+)`),
+		regexp.MustCompile(`([\w.-]+)\.github\.io/([\w.-]+)`),
+		regexp.MustCompile(`repos=([\w.-]+)/([\w.-]+)`),
+		regexp.MustCompile(`raw\.githubusercontent\.com/([\w.-]+)/([\w.-]+)/`),
+	}
+	for _, re := range patterns {
+		if m := re.FindStringSubmatch(text); m != nil {
+			owner, repo := m[1], m[2]
+			repo = strings.TrimSuffix(repo, ".git")
+			return "https://github.com/" + owner + "/" + repo
+		}
+	}
+	return ""
 }
 
 // extractLink returns the most useful URL for a finding:
-//   - if Source is itself a "useful" URL (not a badge / star-history image),
-//     return Source verbatim;
-//   - otherwiseparse WhyFree for a github.com/<owner>/<repo> link (markdown
-//     or html) and return the canonical repo URL.
+//   - if a GitHub repo slug is present anywhere (source or why_free) ->
+//     the canonical https://github.com/<owner>/<repo> URL;
+//   - else if Source is itself a "useful" URL (not a badge / star-history
+//     image) -> Source verbatim;
+//   - else parse WhyFree for a github.com/<owner>/<repo> link and return it;
+//   - else Source.
 func extractLink(it *PendingItem) string {
+	if repo := canonicalRepo(it); repo != "" {
+		return repo
+	}
 	if !isUselessSource(it.Source) {
 		return it.Source
 	}
-	if repo := extractGitHubRepo(it.WhyFree); repo != "" {
-		return repo
+	if r := extractGitHubRepo(it.WhyFree); r != "" {
+		return r
 	}
 	return it.Source
 }
