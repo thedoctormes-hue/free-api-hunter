@@ -4,7 +4,7 @@
 //
 // Contract (fixed, do NOT change the schema):
 //
-//	{ "pending": [ { "provider": str, "source": str, "why_free": str, "found_at": ISO, "reviewed": bool } ] }
+//	{ "pending": [ { "provider": str, "source": str, "why_free": str, "found_at": ISO, "reviewed": bool, "verdict": str } ] }
 //
 // The writer only APPENDS new findings (matched by source URL) and never
 // rewrites existing entries, so the Mongoose agent's reviewed:true updates are
@@ -34,6 +34,7 @@ type PendingItem struct {
 	WhyFree  string `json:"why_free"`
 	FoundAt  string `json:"found_at"`
 	Reviewed bool   `json:"reviewed"`
+	Verdict  string `json:"verdict"`
 }
 
 // LoadPendingReview reads pending_review.json. A missing file is treated as an
@@ -126,6 +127,7 @@ func AppendNewFindings(existing PendingReview, findings []*models.Finding) (Pend
 			WhyFree:  whyFree,
 			FoundAt:  foundAt,
 			Reviewed: false,
+			Verdict:  "",
 		})
 		added++
 	}
