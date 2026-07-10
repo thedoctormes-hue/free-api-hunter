@@ -10,7 +10,13 @@ version: "3.8"
 
 services:
   searxng:
-    image: searxng/searxng:latest
+    # Custom engines are baked into the image via Dockerfile.searxng so they
+    # survive `docker compose up -d` / image pulls / host reboots.
+    # `docker compose build` must run after adding/updating an engine module.
+    build:
+      context: .
+      dockerfile: Dockerfile.searxng
+    image: lab-searxng:local
     container_name: searxng
     env_file: .env.searxng
     ports:

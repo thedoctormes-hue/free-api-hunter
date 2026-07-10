@@ -1,0 +1,19 @@
+# Extends the official SearXNG image with our custom key-rotating engine
+# modules (exa / tavily / firecrawl / tinyfish / olostep).
+#
+# WHY BAKE INSTEAD OF `docker cp`:
+#   `docker cp` only drops files into the RUNNING container. Any
+#   `docker compose up -d` (image pull, settings change, host reboot,
+#   recreate) spawns a FRESH container from the base image and the
+#   custom engines VANISH -> the whole paid pool goes dark. Baking the
+#   modules into the image makes the deploy reproducible and persistent.
+#
+# SECURITY: api_keys live ONLY in the mounted ./searxng/settings.yml
+# (gitignored). This Dockerfile copies engine CODE, never secrets.
+FROM docker.io/searxng/searxng:latest
+
+COPY searxng/engines/exa.py       /usr/local/searxng/searx/engines/exa.py
+COPY searxng/engines/tavily.py    /usr/local/searxng/searx/engines/tavily.py
+COPY searxng/engines/firecrawl.py /usr/local/searxng/searx/engines/firecrawl.py
+COPY searxng/engines/tinyfish.py  /usr/local/searxng/searx/engines/tinyfish.py
+COPY searxng/engines/olostep.py   /usr/local/searxng/searx/engines/olostep.py
