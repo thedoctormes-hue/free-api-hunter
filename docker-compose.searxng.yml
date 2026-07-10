@@ -19,7 +19,8 @@ services:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/search?q=health&format=json&categories=general"]
+      # NOTE: the SearXNG image has no `curl`; use python3 (present in the image).
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8080/search?q=health&format=json&categories=general', timeout=8); sys.exit(0)"]
       interval: 60s
       timeout: 10s
       retries: 3
