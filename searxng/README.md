@@ -82,12 +82,39 @@ bin/searxng-health.sh
 `searxng/settings.yml` содержит ключи API → **gitignored**. Не коммитить.
 Центральный keystore: `/root/.openclaw/.api-keys.json` (chmod 600).
 
+## Failover по ключам
+
+Каждый платный движок использует общий пул `searxng/engines/_poolkeys.py`
+(`KeyPool`). Перед тем как отдать ключ фреймворку, движок делает
+минимальный реальный API-запрос ЭТИМ ключом; если ключ мёртвый/забаненный
+(401/429) — переключается на следующий. Так мёртвый ключ НЕ suspend-ит
+весь движок (поведение фреймворка по умолчанию).
+
+- Цена: ~1 доп. (минимальный) запрос на поиск → ~2x расход квоты.
+  Компенсируется кэшем на уровне оркестратора.
+- Движки с 1 ключом (olostep) probe не делают — переключать некуда.
+- Доказано: 1 мёртвый + 4 живых ключа Exa → 10/10 запросов OK
+  (до failover было 0/10 — движок ложился целиком).
+
+## Бесплатные движки
+
+В РФ ЧАСТЬ built-in движков заблокирована (duckduckgo CAPTCHA, brave/
+google/startpage/qwant/mojeek/yahoo — suspended), но МНОГИЕ работают и
+оставлены активными (бесплатно обогащают выдачу): bing, wikipedia,
+openstreetmap, ecosia, marginalia, semanticscholar, stackexchange, pubmed,
+youtube, invidious, searx, presearch, seamlesssearch, wiby, mongodb.
+Заблокированные отключены через `disabled: true` в settings.yml
+(не тратят latency и не дают ложных 0-результатов).
+
 ## Статус
 
 - Коммиты: `48d7a03` (пулы), `9558b48` (ротация внутри движка), `010e86b` (olostep),
-  `e943748` (fix healthcheck: curl→python3 в образе нет), `655b16d` (персистентный
-  деплой: движки запечены в образ через Dockerfile).
-- Движки персистентны (больше не теряются при `up -d`).
+  `e943748` (fix healthcheck: curl→python3), `655b16d` (персистентный деплой),
+  `a700e66` (docs + /research отчёт), `9cda68e` (failover по ключам во все 5 платных движков).
+- Движки персистентны (запечены в образ, переживают `up -d`/ребут/пулл образ).
+- **Failover реализован** (`_poolkeys.KeyPool`): мёртвый ключ не убивает движок.
+  Доказано: 1 мёртвый + 4 живых → 10/10 OK.
+- **Бесплатные движки:** рабочие в РФ активны (bing/wikipedia/ecosia/...),
+  заблокированные (duckduckgo/brave/google/startpage/qwant/mojeek/yahoo/wikidata/currency)
+  отключены через `disabled: true`.
 - MCP `lab-search` НЕ зарегистрирован (ждёт разрешения ЗавЛаба).
-- **Известный дефект (не закрыт):** в движках нет failover по ключам — один
-  протухший ключ suspend-ит весь движок. Требует доработки (double-request pattern).
