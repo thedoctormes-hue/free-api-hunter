@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -140,6 +141,7 @@ func VerifyProviderPage(provider *models.Provider) *VerifyResult {
 
 // KeyVerifyResult — результат проверки API ключа
 type KeyVerifyResult struct {
+	Provider   string            `json:"provider,omitempty"` // кто верифицировался (для удобства Validator)
 	IsActive   bool              `json:"is_active"`
 	StatusCode int               `json:"status_code"`
 	Error      string            `json:"error,omitempty"`
@@ -148,36 +150,49 @@ type KeyVerifyResult struct {
 	CheckedAt  string            `json:"checked_at"`
 }
 
-// VerifyAPIKey — проверить что API ключ рабочий (ключ берётся из vault)
-func VerifyAPIKey(key *models.APIKey) *KeyVerifyResult {
+// resolveKey — честно резолвит реальный секрет для APIKey:
+//   - KeyLocation с префиксом sk-/gsk-/csk-/cfut_ — это сам секрет, используем как есть
+//   - KeyLocation — абсолютный путь внутри vault — читаем КОНКРЕТНЫЙ файл (GetKeyByPath)
+//   - иначе (относительный/неизвестный location) — legacy fallback на дефолтный ключ провайдера
+//
+// Раньше ветка «не префикс» всегда звала vault.GetDefaultKey, то есть брала ПЕРВЫЙ
+// файл провайдера, а не тот, что нужен. Теперь конкретный путь читается точно.
+func resolveKey(key *models.APIKey) (string, error) {
+	loc := key.KeyLocation
+	if strings.HasPrefix(loc, "sk-") || strings.HasPrefix(loc, "gsk_") ||
+		strings.HasPrefix(loc, "csk-") || strings.HasPrefix(loc, "cfut_") {
+		return loc, nil
+	}
+	if filepath.IsAbs(loc) {
+		secret, err := vault.GetKeyByPath(loc)
+		if err != nil {
+			return "", err
+		}
+		return secret, nil
+	}
+	// Legacy: относительный/неизвестный location — дефолтный ключ провайдера.
+	return vault.GetDefaultKey(key.ProviderName)
+}
+
+// probeKey — живая проба конкретного секрета (GET /models + Bearer).
+// НЕ трогает vault и НЕ мутирует models.APIKey. Общий хелпер для
+// VerifyAPIKey и VerifyAPIKeyWithSecret, чтобы не дублировать логику пробы.
+func probeKey(endpoint, secret string) *KeyVerifyResult {
 	result := &KeyVerifyResult{
 		CheckedAt: models.Now(),
 		Limits:    make(map[string]string),
 	}
 
-	// Получаем реальный ключ из vault
-	realKey := key.KeyLocation
-	if !strings.HasPrefix(realKey, "sk-") && !strings.HasPrefix(realKey, "gsk_") &&
-		!strings.HasPrefix(realKey, "csk-") && !strings.HasPrefix(realKey, "cfut_") {
-		// Это путь в vault — читаем
-		var err error
-		realKey, err = vault.GetDefaultKey(key.ProviderName)
-		if err != nil {
-			result.Error = "vault_error: " + err.Error()
-			return result
-		}
-	}
-
-	// Validate endpoint URL
-	_, valErr := ValidateOutboundURL(key.Endpoint)
+	// Validate endpoint URL (SSRF protection). В тестах переопределяется.
+	_, valErr := ValidateOutboundURL(endpoint)
 	if valErr != nil {
 		result.Error = "invalid_endpoint: " + valErr.Error()
 		return result
 	}
 
 	testURLs := []string{
-		strings.TrimRight(key.Endpoint, "/") + "/models",
-		strings.TrimRight(key.Endpoint, "/") + "/v1/models",
+		strings.TrimRight(endpoint, "/") + "/models",
+		strings.TrimRight(endpoint, "/") + "/v1/models",
 	}
 
 	for _, testURL := range testURLs {
@@ -185,7 +200,7 @@ func VerifyAPIKey(key *models.APIKey) *KeyVerifyResult {
 		if err != nil {
 			continue
 		}
-		req.Header.Set("Authorization", "Bearer "+realKey)
+		req.Header.Set("Authorization", "Bearer "+secret)
 		req.Header.Set("User-Agent", "FreeAPIHunter/0.1")
 
 		resp, err := HTTPClient.Do(req)
@@ -193,40 +208,70 @@ func VerifyAPIKey(key *models.APIKey) *KeyVerifyResult {
 			result.Error = err.Error()
 			continue
 		}
-		defer resp.Body.Close()
+		func() {
+			defer resp.Body.Close()
+			result.StatusCode = resp.StatusCode
 
-		result.StatusCode = resp.StatusCode
-
-		if resp.StatusCode == 200 {
-			result.IsActive = true
-			body, err := io.ReadAll(resp.Body)
-			if err == nil {
-				var data map[string]interface{}
-				if json.Unmarshal(body, &data) == nil {
-					if d, ok := data["data"].([]interface{}); ok {
-						for _, m := range d {
-							if mi, ok := m.(map[string]interface{}); ok {
-								if id, ok := mi["id"].(string); ok {
-									result.Models = append(result.Models, id)
-								} else if modelID, ok := mi["model_id"].(string); ok {
-									result.Models = append(result.Models, modelID)
-								}
-							}
-						}
-					}
+			if resp.StatusCode == 200 {
+				result.IsActive = true
+				body, err := io.ReadAll(resp.Body)
+				if err == nil {
+					parseModels(body, result)
 				}
+			} else if resp.StatusCode == 401 {
+				result.Error = "invalid_key"
+			} else if resp.StatusCode == 403 {
+				result.Error = "forbidden"
+			} else if resp.StatusCode == 429 {
+				result.Error = "rate_limited"
+			} else {
+				result.Error = fmt.Sprintf("http_%d", resp.StatusCode)
 			}
+		}()
+
+		if result.IsActive {
 			break
-		} else if resp.StatusCode == 401 {
-			result.Error = "invalid_key"
-		} else if resp.StatusCode == 403 {
-			result.Error = "forbidden"
-		} else if resp.StatusCode == 429 {
-			result.Error = "rate_limited"
-		} else {
-			result.Error = fmt.Sprintf("http_%d", resp.StatusCode)
 		}
 	}
+
+	return result
+}
+
+// parseModels — извлечь список моделей из ответа /models.
+func parseModels(body []byte, result *KeyVerifyResult) {
+	var data map[string]interface{}
+	if json.Unmarshal(body, &data) != nil {
+		return
+	}
+	if d, ok := data["data"].([]interface{}); ok {
+		for _, m := range d {
+			if mi, ok := m.(map[string]interface{}); ok {
+				if id, ok := mi["id"].(string); ok {
+					result.Models = append(result.Models, id)
+				} else if modelID, ok := mi["model_id"].(string); ok {
+					result.Models = append(result.Models, modelID)
+				}
+			}
+		}
+	}
+}
+
+// VerifyAPIKey — проверить что API ключ рабочий (ключ берётся из vault
+// или из самого KeyLocation, см. resolveKey).
+func VerifyAPIKey(key *models.APIKey) *KeyVerifyResult {
+	realKey, err := resolveKey(key)
+	if err != nil {
+		result := &KeyVerifyResult{
+			Provider:  key.ProviderName,
+			CheckedAt: models.Now(),
+			Limits:    make(map[string]string),
+		}
+		result.Error = "vault_error: " + err.Error()
+		return result
+	}
+
+	result := probeKey(key.Endpoint, realKey)
+	result.Provider = key.ProviderName
 
 	key.IsActive = result.IsActive
 	key.LastChecked = &result.CheckedAt
@@ -234,6 +279,21 @@ func VerifyAPIKey(key *models.APIKey) *KeyVerifyResult {
 		key.Models = result.Models
 	}
 
+	return result
+}
+
+// VerifyAPIKeyWithSecret — живая проба КОНКРЕТНОГО секрета провайдера,
+// без обращения к vault. Полезно, когда секрет уже известен (например,
+// Validator получил его из конкретного vault-файла или пробросил напрямую).
+//
+// ПРИМЕЧАНИЕ: живая проба GET /models требует целевой endpoint, а в кодовой
+// базе нет реестра provider→endpoint (Endpoint хранится на models.APIKey и в
+// БД пула ключей). Поэтому по сравнению с запрошенной сигнатурой (provider, secret)
+// добавлен обязательный параметр endpoint — иначе проба невозможна. Validator
+// уже держит APIKey.Endpoint и передаёт его.
+func VerifyAPIKeyWithSecret(provider, endpoint, secret string) *KeyVerifyResult {
+	result := probeKey(endpoint, secret)
+	result.Provider = provider
 	return result
 }
 

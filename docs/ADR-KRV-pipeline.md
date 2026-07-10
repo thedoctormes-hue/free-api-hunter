@@ -1,0 +1,83 @@
+# ADR-KRV: Key Registry & Validation Service (KRV) — пайплайн free-api-hunter
+
+- **Статус:** DRAFT (на утверждении ЗавЛаба)
+- **Дата:** 2026-07-10
+- **Автор:** Сова (owl), Auditor
+- **Относится к:** free-api-hunter, mcp-tools (apikeys), heartbeat
+
+## Контекст
+
+ЗавЛаб сформулировал пайплайн работы с бесплатными API-ключами:
+
+1. free-api-hunter находит источник → сигнал ЗавЛабу (через релевантного агента — Мангуста) в heartbeat.
+2. ЗавЛаб проверяет или кладёт в бэклог.
+3–4. Получает тестовый ключ, изучает с агентом.
+5. Ключ херня → источник помечается херня; ключ хороший → мульти-аккаунт.
+6. (мульти-аккаунт, получение ещё ключей)
+7. Пишут понятную инструкцию, как пользоваться.
+8. Нативный MCP должен дать агенту РАБОТАЮЩИЙ ключ + инструкцию, чтобы агент не тратил время.
+9. Периодический хелсчек ключей + актуализация параметров.
+
+Фактчек кода показал: кирпичики есть (hunter -verify, internal/verifier, search-check-keys.sh, HTTP API :8080, миграция на SQLite, provider-keys-guide.md), НО пайплайн не собран. `apikeys` MCP читает vault+providers.json с хардкодом, не валидирует ключ, не отдаёт инструкцию; providers.json тонкий (20/21 models:null, last_verified 2 недели назад, нет live-поля); оповещение ЗавЛабу не завязано.
+
+## Решение
+
+Собрать пайплайн через KRV — связку из трёх частей:
+
+- **Key Registry (SQLite)** — единый источник правды. Таблица `keys`: provider, key_id, vault_path, registry_status, live_status, last_validated, models, auth_type, base_url, instructions, added_by, added_at. Заменяет разрозненный providers.json + хардкод.
+- **Validator** — фоновый сервис (системный таймер), для каждого vault-ключа делает живую пробу провайдера этим ключом, пишет live_status (valid/expired/rate_limited/unknown) + обновляет models/limits. Переиспользует internal/verifier + search-check-keys.sh.
+- **Serving facade (apikeys MCP)** — вместо чтения vault+providers.json+хардкод: дёргает Registry через HTTP API hunter (:8080) / SQLite. get_key возвращает ключ (маскирован по умолчанию) + live_status + last_validated + models + instructions. Добавляется audit-log выдачи.
+
+Плюс две надстройки:
+- **Оповещение (Фаза 1):** free-api-hunter пишет data/pending_review.json при находке; heartbeat получает раздел «🔎 Находки free-api-hunter», сурфейсится Мангустом.
+- **Инструкции (Фаза 4):** курируются ЗавЛабом+агентом (не авто-генерятся), хранятся машиночитаемо в Registry (перенос provider-keys-guide.md в шаблоны).
+
+## Разделение человека и автоматики
+
+- **Человек (ЗавЛаб + агент):** решение проверить (2), получение ключа (3–4), оценка (5), мульти-аккаунт (6), написание инструкции (7).
+- **Автоматика (KRV):** оповещение (1), Registry как источник (5+7), отдача рабочего ключа+инструкции (8), периодический хелсчек (9).
+
+## Фазы и исполнители
+
+- Фаза 0 — Спецификация/ADR: Сова (этот документ).
+- Фаза 1 — Оповещение в heartbeat: Сова (черновик) + Мангуст (сурфейс).
+- Фаза 2 — Registry (SQLite): Штрейкбрехер/Муравей.
+- Фаза 3 — Validator: Билдер (spike запущен: krv-validator-spike).
+- Фаза 4 — Инструкции: Мангуст + билдер.
+- Фаза 5 — apikeys MCP facade: Муравей (после утверждения ADR).
+- Фаза 6 — Provenance + SecretRef (долгосрок): билдер.
+- Фаза 7 — Верификация/аудит: Сова (accepting-work + finishing-session).
+
+## Фаза 1 — Оповещение (heartbeat), ФИНАЛИЗИРОВАНО
+
+Решения (подтверждены ЗавЛабом 2026-07-10):
+- Релевантный агент: **Мангуст** (владелец free-api-hunter).
+- Канал: **Вариант А** — задача добавлена только в heartbeat Мангуста, без агрегации в сводные.
+- Роль Мангуста: **только сигналит**, не фильтрует (human-in-the-loop сохранён, шаг 5 за ЗавЛабом).
+
+Артефакт `pending_review.json` (контракт):
+- Путь: `/root/LabDoctorM/projects/free-api-hunter/data/pending_review.json`
+- Схема: { "pending": [ { "provider": str, "source": str, "why_free": str, "found_at": ISO, "reviewed": bool } ] }
+- Пишет: discovery (free-api-hunter, Фаза 4). Читает: heartbeat Мангуста (Фаза 1).
+- Мангуст выставляет `reviewed:true` после доклада ЗавЛабу.
+
+Текст в `HEARTBEAT.md` Мангуста (применён): раздел «🔎 Находки free-api-hunter».
+
+## Правила (обязательные)
+
+- Один источник правды = Registry. Никакого хардкода метаданных в apikeys-сервере.
+- Секреты не попадают в git (существующий pre-commit + scan-secrets.py).
+- Инструкция — авторская (ЗавЛаб+агент), не авто-генерируемая.
+- Audit-log выдачи ключей обязателен.
+
+## Открытые вопросы
+
+- Частота Validator: каждые 6ч (предложение) или при выдаче?
+- Инструкции: шаблоны в Registry или MD как источник?
+- SecretRef/lab-vault: сразу (Фаза 6) или вторая итерация?
+
+## Связанные документы
+
+- secrets-architecture.md (план SecretRef + lab-vault)
+- provider-keys-guide.md (курируемые инструкции, Мангуст)
+- ADR-0005 (миграция free-api-hunter на SQLite)
