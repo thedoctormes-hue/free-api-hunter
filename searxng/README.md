@@ -33,15 +33,26 @@ bin/lab-search-gateway-addkey.sh add-key exa KEY1 KEY2 KEY3 KEY4 KEY5
 
 ## Деплой модулей
 
-При `(re)создании контейнера` (`compose up -d`) кастомные модули теряются — они в слое
-контейнера, не в volume. Восстановить:
+**Кастомные движки запечены в образ** (`Dockerfile.searxng` → `lab-searxng:local`),
+поэтому они переживают `(re)создание контейнера` (`compose up -d`), pull образа
+и перезагрузку хоста. Это основной, воспроизводимый путь.
+
+После правки модуля движка — пересобрать образ:
 
 ```bash
-bin/lab-search-gateway-addkey.sh deploy
+docker compose -f docker-compose.searxng.yml build
+docker compose -f docker-compose.searxng.yml up -d
 ```
 
-Копирует `searxng/engines/{exa,tavily,firecrawl,tinyfish,olostep}.py` в контейнер,
-рестартит SearXNG, прогоняет healthcheck.
+`bin/lab-search-gateway-addkey.sh deploy` (hot-patch через `docker cp` + restart)
+оставлен как быстрый путь без пересборки, НО он НЕ персистентен — при следующем
+`up -d` правки исчезнут. Используйте только для экспериментов.
+
+## Порт
+
+SearXNG опубликован на **8889** (`0.0.0.0:8889→8080`). Порт 8080 уже занят
+другим сервисом лаборатории (СнабЛаб / nginx) — НЕ используйте 8080 для SearXNG.
+Каноничный URL для агентов/MCP: `http://localhost:8889/search` (env `SEARXNG_URL`).
 
 ## Healthcheck
 
@@ -58,7 +69,12 @@ bin/searxng-health.sh
    - `api_keys: list[str] = []`, `_next_key()` — round-robin
    - `from searx.result_types import EngineResults`; `res.add(res.types.MainResult(...))`
 2. Добавить блок в `settings.yml` (`name`, `engine`, `shortcut`, `api_keys: [...]`, `categories`).
-3. `bin/lab-search-gateway-addkey.sh deploy`
+3. Пересобрать образ и пересоздать контейнер:
+   ```bash
+   docker compose -f docker-compose.searxng.yml build
+   docker compose -f docker-compose.searxng.yml up -d
+   ```
+   (либо быстрый hot-patch: `bin/lab-search-gateway-addkey.sh deploy` — не персистентно)
 4. Проверить: `curl "http://localhost:8889/search?q=test&format=json&engines=<name>"`
 
 ## Секреты
@@ -68,5 +84,10 @@ bin/searxng-health.sh
 
 ## Статус
 
-- Коммиты: `48d7a03` (пулы), `9558b48` (ротация внутри движка), `010e86b` (olostep).
+- Коммиты: `48d7a03` (пулы), `9558b48` (ротация внутри движка), `010e86b` (olostep),
+  `e943748` (fix healthcheck: curl→python3 в образе нет), `655b16d` (персистентный
+  деплой: движки запечены в образ через Dockerfile).
+- Движки персистентны (больше не теряются при `up -d`).
 - MCP `lab-search` НЕ зарегистрирован (ждёт разрешения ЗавЛаба).
+- **Известный дефект (не закрыт):** в движках нет failover по ключам — один
+  протухший ключ suspend-ит весь движок. Требует доработки (double-request pattern).
