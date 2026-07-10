@@ -2,8 +2,8 @@
 //
 // Spike-прототип. Итерирует ключи в vault
 // (/root/LabDoctorM/vault/free-api-hunter/<provider>/api.key*), для каждого
-// делает живую пробу провайдера (переиспользуя verifier.VerifyAPIKey /
-// verifier.ExtractKeyInfo) и пишет live_status в SQLite-таблицу "keys".
+// делает живую пробу провайдера (переиспользуя verifier.VerifyAPIKeyWithSecret)
+// и пишет live_status в SQLite-таблицу "keys".
 //
 // live_status ∈ {valid, expired, rate_limited, unknown} по StatusCode:
 //   200 -> valid, 401/403 -> expired, 429 -> rate_limited, else -> unknown.
@@ -160,12 +160,9 @@ func ValidateKey(provider, keyFile string, cfg EndpointConfig, probe bool, regis
 		return rec, nil
 	}
 
-	// Читаем КОНКРЕТНЫЙ файл ключа и передаём секрет как KeyLocation,
-	// чтобы VerifyAPIKey проверил именно ЭТОТ ключ.
-	// ВНИМАНИЕ (gap): verifier.VerifyAPIKey резолвит KeyLocation через
-	// vault.GetDefaultKey(provider), если строка не начинается с известного
-	// префикса (sk-/gsk-/csk-/cfut_). Для ключей без такого префикса
-	// проба упадёт на DEFAULT-ключ провайдера, а не на этот файл.
+	// Читаем КОНКРЕТНЫЙ файл ключа и шлём живую пробу именно ЭТИМ секретом.
+	// VerifyAPIKeyWithSecret проверяет переданный secret напрямую (без vault,
+	// без default-ключа провайдера) — тем самым валидируется этот файл vault.
 	secret, err := os.ReadFile(vaultPath)
 	if err != nil {
 		rec.LiveStatus = "unknown"
@@ -175,29 +172,20 @@ func ValidateKey(provider, keyFile string, cfg EndpointConfig, probe bool, regis
 	realKey := strings.TrimSpace(string(secret))
 	endpoint := strings.TrimRight(cfg.BaseURL, "/") + cfg.ModelsPath
 
-	apiKey := &models.APIKey{
-		ProviderName: provider,
-		KeyLocation:  realKey, // секрет передаётся напрямую (см. gap выше)
-		Endpoint:     endpoint,
-	}
-
-	res := verifier.VerifyAPIKey(apiKey)
+	// Живая проба КОНКРЕТНОГО секрета из этого файла (PAT-005: не default-ключ).
+	res := verifier.VerifyAPIKeyWithSecret(provider, endpoint, realKey)
 	rec.LiveStatus = liveStatusFromResult(res)
 	rec.LastValidated = res.CheckedAt
 	if res.Error != "" {
 		rec.Instructions = strings.TrimSpace(rec.Instructions + " | probe_error: " + res.Error)
 	}
 
-	// Обогащаем models через ExtractKeyInfo, если ключ активен.
-	if res.IsActive {
-		if info := verifier.ExtractKeyInfo(apiKey); info != nil {
-			if ms, ok := info["models"].([]string); ok && len(ms) > 0 {
-				rec.Models = ms
-			}
+	// Модели приходят прямо из пробы; копируем также лимиты в инструкции.
+	rec.Models = res.Models
+	if len(res.Limits) > 0 {
+		for k, v := range res.Limits {
+			rec.Instructions = strings.TrimSpace(rec.Instructions + fmt.Sprintf(" | limit:%s=%s", k, v))
 		}
-	}
-	if len(rec.Models) == 0 {
-		rec.Models = res.Models
 	}
 	return rec, nil
 }
