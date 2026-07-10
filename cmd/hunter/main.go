@@ -12,6 +12,7 @@ import (
 	"free-api-hunter/internal/api"
 	"free-api-hunter/internal/cf"
 	"free-api-hunter/internal/filter"
+	"free-api-hunter/internal/keydrop"
 	"free-api-hunter/internal/models"
 	"free-api-hunter/internal/notify"
 	"free-api-hunter/internal/ocr"
@@ -97,6 +98,9 @@ func main() {
 			return
 		case "validate-keys":
 			runValidateKeys(os.Args[2:])
+			return
+		case "keydrop":
+			runKeyDrop(os.Args[2:])
 			return
 		case "scan":
 			os.Args = append([]string{os.Args[0]}, os.Args[2:]...)
@@ -396,7 +400,33 @@ func runTriageApply(args []string) {
 	}
 }
 
-// runValidateKeys — подкоманда `hunter validate-keys`: живая валидация
+// runKeyDrop — подкоманда `hunter keydrop`: забирает .md с ключами
+// из папки на Яндекс Диске, зеркалит в vault, верифицирует и регистрирует
+// в Registry (таблица keys). См. internal/keydrop.
+func runKeyDrop(args []string) {
+	fs := flag.NewFlagSet("keydrop", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "data", "Каталог с free-api-hunter.db (SQLite)")
+	diskDir := fs.String("disk-dir", "free-api-hunter/keys", "Папка на Яндекс Диске (отн. корня Диска)")
+	yandexBin := fs.String("yandex", "/root/LabDoctorM/projects/DoctorM_and_Ai/bin/yandex.sh", "Путь к yandex.sh")
+	endpoints := fs.String("endpoints", "config/validator_endpoints.json", "Карта endpoint'ов для верификации")
+	keep := fs.Bool("keep", false, "Не удалять .md с Диска после обработки")
+	addedBy := fs.String("added-by", "keydrop", "Кто добавил ключ (аудит)")
+	_ = fs.Parse(args)
+
+	opts := keydrop.Options{
+		DataDir:       *dataDir,
+		DiskDir:       *diskDir,
+		YandexBin:     *yandexBin,
+		EndpointsPath: *endpoints,
+		AddedBy:       *addedBy,
+		Keep:          *keep,
+	}
+	if err := keydrop.Run(opts); err != nil {
+		logger.Fatalf("keydrop failed: %v", err)
+	}
+}
+
+// подкоманда `hunter validate-keys`: живая валидация
 // API-ключей из vault (spike/krv-validator). Пишет live_status в таблицу "keys".
 func runValidateKeys(args []string) {
 	fs := flag.NewFlagSet("validate-keys", flag.ExitOnError)
