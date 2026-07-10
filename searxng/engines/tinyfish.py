@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""TinyFish search engine for SearXNG (key-rotating pool)."""
+"""TinyFish search engine for SearXNG (key-rotating pool with failover)."""
 
-import threading
 import typing as t
 from urllib.parse import urlencode
 
 from searx.exceptions import SearxEngineAPIException
 from searx.result_types import EngineResults
+from searx.engines._poolkeys import KeyPool, probe_get
 
 if t.TYPE_CHECKING:
     from searx.extended_types import SXNG_Response
@@ -24,9 +24,6 @@ about = {
 api_keys: list[str] = []
 api_key: str = ""
 
-_api_idx = 0
-_api_lock = threading.Lock()
-
 categories = ["general", "web", "ai"]
 paging = False
 safesearch = False
@@ -34,27 +31,31 @@ time_range_support = False
 
 base_url = "https://api.search.tinyfish.ai"
 
+_pool: KeyPool | None = None
+
 
 def init(_):
-    global api_key
+    global _pool
     if not api_keys:
         raise SearxEngineAPIException("No API keys provided for TinyFish")
-    api_key = api_keys[0]
 
+    def _validate(key: str, timeout: float) -> bool:
+        qs = urlencode({"query": "health", "location": "US", "language": "en"})
+        return probe_get(
+            base_url + "?" + qs,
+            {"X-API-Key": key, "Accept": "application/json"},
+            timeout,
+        )
 
-def _next_key() -> str:
-    global _api_idx
-    with _api_lock:
-        k = api_keys[_api_idx % len(api_keys)]
-        _api_idx += 1
-    return k
+    _pool = KeyPool(api_keys, _validate)
 
 
 def request(query: str, params: "OnlineParams") -> None:
+    key = _pool.pick()
     qs = urlencode({"query": query, "location": "US", "language": "en"})
     params["url"] = base_url + "?" + qs
     params["method"] = "GET"
-    params["headers"]["X-API-Key"] = _next_key()
+    params["headers"]["X-API-Key"] = key
     params["headers"]["Accept"] = "application/json"
 
 

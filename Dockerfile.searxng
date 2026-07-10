@@ -16,4 +16,5 @@ COPY searxng/engines/exa.py       /usr/local/searxng/searx/engines/exa.py
 COPY searxng/engines/tavily.py    /usr/local/searxng/searx/engines/tavily.py
 COPY searxng/engines/firecrawl.py /usr/local/searxng/searx/engines/firecrawl.py
 COPY searxng/engines/tinyfish.py  /usr/local/searxng/searx/engines/tinyfish.py
-COPY searxng/engines/olostep.py   /usr/local/searxng/searx/engines/olostep.py
+COPY searxng/engines/olostep.py  /usr/local/searxng/searx/engines/olostep.py
+COPY searxng/engines/_poolkeys.py /usr/local/searxng/searx/engines/_poolkeys.py

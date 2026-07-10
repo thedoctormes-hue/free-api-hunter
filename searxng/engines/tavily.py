@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tavily search engine for SearXNG (key-rotating pool)."""
+"""Tavily search engine for SearXNG (key-rotating pool with failover)."""
 
 import json
-import threading
 import typing as t
 
 from searx.exceptions import SearxEngineAPIException
 from searx.result_types import EngineResults
+from searx.engines._poolkeys import KeyPool, probe_post_json
 
 if t.TYPE_CHECKING:
     from searx.extended_types import SXNG_Response
@@ -24,9 +24,6 @@ about = {
 api_keys: list[str] = []
 api_key: str = ""
 
-_api_idx = 0
-_api_lock = threading.Lock()
-
 categories = ["general", "web", "ai"]
 paging = False
 safesearch = False
@@ -34,27 +31,31 @@ time_range_support = False
 
 base_url = "https://api.tavily.com/search"
 
+_pool: KeyPool | None = None
+
 
 def init(_):
-    global api_key
+    global _pool
     if not api_keys:
         raise SearxEngineAPIException("No API keys provided for Tavily")
-    api_key = api_keys[0]
 
+    def _validate(key: str, timeout: float) -> bool:
+        return probe_post_json(
+            base_url,
+            {"Authorization": "Bearer " + key},
+            {"query": "health", "max_results": 1},
+            timeout,
+        )
 
-def _next_key() -> str:
-    global _api_idx
-    with _api_lock:
-        k = api_keys[_api_idx % len(api_keys)]
-        _api_idx += 1
-    return k
+    _pool = KeyPool(api_keys, _validate)
 
 
 def request(query: str, params: "OnlineParams") -> None:
+    key = _pool.pick()
     params["url"] = base_url
     params["method"] = "POST"
     params["headers"]["Content-Type"] = "application/json"
-    params["headers"]["Authorization"] = "Bearer " + _next_key()
+    params["headers"]["Authorization"] = "Bearer " + key
     body = {
         "query": query,
         "max_results": 10,

@@ -1,17 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Engine to search using the Exa AI Search API (key-rotating pool).
+"""Engine to search using the Exa AI Search API (key-rotating pool with failover).
 
-One SearXNG engine, N API accounts. Each request picks the next key via
-round-robin so the free-tier quota of all accounts is shared/balanced.
+One SearXNG engine, N API accounts. Each request validates the next key with a
+minimal API call *before* handing it to the framework, so a dead/rate-limited
+key never reaches the framework (which would suspend the whole engine).
 """
 
 import json
-import threading
 import typing as t
 from datetime import datetime
 
 from searx.exceptions import SearxEngineAPIException
 from searx.result_types import EngineResults
+from searx.engines._poolkeys import KeyPool, probe_post_json
 
 if t.TYPE_CHECKING:
     from searx.extended_types import SXNG_Response
@@ -31,9 +32,6 @@ api_keys: list[str] = []
 # Kept for SearXNG compatibility (require_api_key check).
 api_key: str = ""
 
-_api_idx = 0
-_api_lock = threading.Lock()
-
 categories = ["general", "web", "ai"]
 paging = True
 safesearch = False
@@ -43,29 +41,33 @@ results_per_page: int = 10
 
 base_url = "https://api.exa.ai/search"
 
+_pool: KeyPool | None = None
+
 
 def init(_):
     """Initialize the engine."""
-    global api_key
+    global _pool
     if not api_keys:
         raise SearxEngineAPIException("No API keys provided for Exa")
-    api_key = api_keys[0]
 
+    def _validate(key: str, timeout: float) -> bool:
+        return probe_post_json(
+            base_url,
+            {"x-api-key": key},
+            {"query": "health", "numResults": 1, "type": "keyword"},
+            timeout,
+        )
 
-def _next_key() -> str:
-    global _api_idx
-    with _api_lock:
-        k = api_keys[_api_idx % len(api_keys)]
-        _api_idx += 1
-    return k
+    _pool = KeyPool(api_keys, _validate)
 
 
 def request(query: str, params: "OnlineParams") -> None:
-    """Create the API request (POST, JSON body)."""
+    """Create the API request (POST, JSON body) using a validated key."""
+    key = _pool.pick()
     params["url"] = base_url
     params["method"] = "POST"
     params["headers"]["Content-Type"] = "application/json"
-    params["headers"]["x-api-key"] = _next_key()
+    params["headers"]["x-api-key"] = key
     body: dict[str, t.Any] = {
         "query": query,
         "numResults": results_per_page,
