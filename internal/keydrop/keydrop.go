@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"encoding/json"
+
 	"free-api-hunter/internal/database"
 	"free-api-hunter/internal/validator"
 )
@@ -38,8 +40,9 @@ type Options struct {
 	DiskDir       string // папка на Яндекс Диске (отн. корня Диска)
 	YandexBin     string // путь к yandex.sh
 	EndpointsPath string // карта endpoint'ов для верификации
-	AddedBy       string // кто добавил (аудит)
-	Keep          bool   // не удалять .md с Диска после обработки
+	AddedBy              string // кто добавил (аудит)
+	Keep                 bool   // не удалять .md с Диска после обработки
+	PendingValidationPath string // куда писать сигнал для агентской валидации
 }
 
 // Run — опросить папку на Диске, распарсить .md, зеркалить ключи в vault,
@@ -56,6 +59,9 @@ func Run(opts Options) error {
 	}
 	if opts.AddedBy == "" {
 		opts.AddedBy = "keydrop"
+	}
+	if opts.PendingValidationPath == "" {
+		opts.PendingValidationPath = filepath.Join(opts.DataDir, "pending_validation.json")
 	}
 
 	if err := database.Init(opts.DataDir); err != nil {
@@ -130,6 +136,20 @@ func Run(opts Options) error {
 				continue
 			}
 			logger.Printf("registered %s/%s live=%s", provider, name, rec.LiveStatus)
+
+			// Сигнал для агентской валидации (Manus), если механика не справилась
+			if rec.LiveStatus != "valid" {
+				pe := PendingEntry{
+					KeyID:      provider + "/" + name,
+					Provider:   provider,
+					VaultPath:  vp,
+					LiveStatus: rec.LiveStatus,
+					ReceivedAt: time.Now().UTC().Format(time.RFC3339),
+				}
+				if serr := AppendPendingValidation(opts.PendingValidationPath, pe); serr != nil {
+					logger.Printf("pending_validation emit %s/%s: %v", provider, name, serr)
+				}
+			}
 		}
 
 		if !opts.Keep {
@@ -322,4 +342,29 @@ func containsKey(line string, keySet map[string]bool) bool {
 		}
 	}
 	return false
+}
+
+// PendingEntry — одна запись сигнала для агентской валидации (Manus).
+type PendingEntry struct {
+	KeyID      string `json:"key_id"`
+	Provider   string `json:"provider"`
+	VaultPath  string `json:"vault_path"`
+	LiveStatus string `json:"live_status"`
+	ReceivedAt string `json:"received_at"`
+}
+
+// AppendPendingValidation — дописать запись в pending_validation.json (массив).
+func AppendPendingValidation(path string, e PendingEntry) error {
+	var arr []PendingEntry
+	if b, err := os.ReadFile(path); err == nil && len(b) > 0 {
+		if jerr := json.Unmarshal(b, &arr); jerr != nil {
+			arr = nil
+		}
+	}
+	arr = append(arr, e)
+	out, err := json.MarshalIndent(arr, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0644)
 }

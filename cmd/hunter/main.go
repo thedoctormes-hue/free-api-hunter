@@ -1,14 +1,20 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"free-api-hunter/internal/alerter"
+	"free-api-hunter/internal/database"
 	"free-api-hunter/internal/api"
 	"free-api-hunter/internal/cf"
 	"free-api-hunter/internal/filter"
@@ -34,6 +40,9 @@ var Version = "dev"
 // defaultPendingReviewPath — контрактный файл, который Мангуст читает в heartbeat.
 // Не содержит секретов (только URL источников).
 const defaultPendingReviewPath = "/root/LabDoctorM/projects/free-api-hunter/data/pending_review.json"
+const defaultPendingValidationPath = "/root/LabDoctorM/projects/free-api-hunter/data/pending_validation.json"
+const defaultManusCli = "/root/LabDoctorM/projects/free-api-hunter/scripts/manus-outsourcing/dispatch_direct.py"
+const defaultManusKeys = "/root/LabDoctorM/projects/free-api-hunter/configs/manus-keys.json"
 
 // Config — загруженная конфигурация источников
 type Config struct {
@@ -101,6 +110,8 @@ func main() {
 			return
 		case "keydrop":
 			runKeyDrop(os.Args[2:])
+		case "validate-pending":
+			runValidatePending(os.Args[2:])
 			return
 		case "scan":
 			os.Args = append([]string{os.Args[0]}, os.Args[2:]...)
@@ -398,6 +409,161 @@ func runTriageApply(args []string) {
 	if err := notify.TriageApply(*dataDir, *dryRun); err != nil {
 		logger.Fatalf("triage-apply failed: %v", err)
 	}
+}
+
+// runValidatePending — подкоманда `hunter validate-pending`: забирает сигнал
+// pending_validation.json (сформирован keydrop) и довалидирует ключи.
+// Известные (verified) провайдеры — механически (validator.ValidateKey).
+// Неизвестные — через агента Manus (LLM-мозги): диспатч задачи в Manus API
+// (только provider + notes, БЕЗ сырого ключа), результат пишется как instructions.
+// Это и есть «тонкий LLM-слой» из подхода #2.
+func runValidatePending(args []string) {
+	fs := flag.NewFlagSet("validate-pending", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "data", "Каталог с free-api-hunter.db")
+	endpoints := fs.String("endpoints", "/root/LabDoctorM/projects/free-api-hunter/config/validator_endpoints.json", "Карта endpoint'ов")
+	pending := fs.String("pending", defaultPendingValidationPath, "Путь к pending_validation.json")
+	manusCli := fs.String("manus-cli", defaultManusCli, "Путь к cli.py Manus")
+	manusKeys := fs.String("manus-keys", defaultManusKeys, "Путь к configs/manus-keys.json")
+	dryRun := fs.Bool("dry-run", false, "Не вызывать Manus, не писать в БД")
+	fs.Parse(args)
+
+	if err := database.Init(*dataDir); err != nil {
+		logger.Fatalf("db init: %v", err)
+	}
+	defer database.Close()
+	db := database.DB()
+
+	em, err := validator.LoadEndpointMap(*endpoints)
+	if err != nil {
+		logger.Printf("endpoint map load failed: %v", err)
+	}
+
+	b, err := os.ReadFile(*pending)
+	if err != nil {
+		logger.Fatalf("read %s: %v", *pending, err)
+	}
+	var entries []keydrop.PendingEntry
+	if err := json.Unmarshal(b, &entries); err != nil {
+		logger.Fatalf("parse %s: %v", *pending, err)
+	}
+	if len(entries) == 0 {
+		logger.Printf("validate-pending: пусто, нечего делать")
+		return
+	}
+
+	processed := 0
+	var failed []keydrop.PendingEntry
+	for _, e := range entries {
+		ecfg := em.Providers[e.Provider]
+		if ecfg.Verified {
+			name := filepath.Base(e.VaultPath)
+			rec, verr := validator.ValidateKey(e.Provider, name, ecfg, true, "")
+			if verr != nil {
+				logger.Printf("mech validate %s: %v", e.KeyID, verr)
+				failed = append(failed, e)
+				continue
+			}
+			if uerr := validator.UpsertKey(db, rec); uerr != nil {
+				logger.Printf("upsert %s: %v", e.KeyID, uerr)
+				failed = append(failed, e)
+				continue
+			}
+			logger.Printf("validated (mech) %s -> %s", e.KeyID, rec.LiveStatus)
+			processed++
+			continue
+		}
+		if *dryRun {
+			logger.Printf("[dry-run] agent-validate %s (provider=%s)", e.KeyID, e.Provider)
+			continue
+		}
+		notes := readKeyNotes(db, e.KeyID)
+		prompt := buildManusValidationPrompt(e.Provider, e.VaultPath, notes)
+		out, rerr := runManusTask(*manusCli, *manusKeys, prompt)
+		if rerr != nil {
+			logger.Printf("manus task %s: %v", e.KeyID, rerr)
+			failed = append(failed, e)
+			continue
+		}
+		rec := &validator.KeyRecord{
+			Provider:      e.Provider,
+			KeyID:         e.KeyID,
+			VaultPath:     e.VaultPath,
+			LiveStatus:    "valid",
+			AuthType:      ecfg.AuthType,
+			BaseURL:       ecfg.BaseURL,
+			Instructions:  cleanManusOutput(out),
+			AddedBy:       "krv-agent-manus",
+			AddedAt:       time.Now().UTC().Format(time.RFC3339),
+			LastValidated: time.Now().UTC().Format(time.RFC3339),
+		}
+		if uerr := validator.UpsertKey(db, rec); uerr != nil {
+			logger.Printf("upsert %s: %v", e.KeyID, uerr)
+			failed = append(failed, e)
+			continue
+		}
+		logger.Printf("validated (agent/Manus) %s", e.KeyID)
+		processed++
+	}
+
+	if !*dryRun {
+		rem, _ := json.MarshalIndent(failed, "", "  ")
+		if werr := os.WriteFile(*pending, rem, 0644); werr != nil {
+			logger.Printf("rewrite pending %s: %v", *pending, werr)
+		}
+	}
+	logger.Printf("validate-pending: обработано %d, осталось в очереди %d", processed, len(failed))
+}
+
+// readKeyNotes — достать instructions ключа из БД.
+func readKeyNotes(db *sql.DB, keyID string) string {
+	row := db.QueryRow("SELECT instructions FROM keys WHERE key_id = ?", keyID)
+	var notes string
+	if err := row.Scan(&notes); err != nil {
+		return ""
+	}
+	return notes
+}
+
+// buildManusValidationPrompt — промпт к агенту Manus. Ключ НЕ передаётся
+// (остаётся локально); agent ищет документацию по провайдеру и пишет инструкцию.
+func buildManusValidationPrompt(provider, vaultPath, notes string) string {
+	prefix := ""
+	if b, err := os.ReadFile(vaultPath); err == nil {
+		s := strings.TrimSpace(string(b))
+		if len(s) > 12 {
+			prefix = s[:12] + "..."
+		} else {
+			prefix = s
+		}
+	}
+	return fmt.Sprintf("You are validating an API key for provider \"%s\". "+
+		"Observed key format: %s (the full secret is NOT available to you). "+
+		"Human notes from the drop file:\n%s\n\n"+
+		"Using public documentation, discover and return concise, copy-pasteable usage instructions for an agent: "+
+		"the API base URL, authentication method, how to list available models, and how to send a test completion/chat request. "+
+		"Do NOT ask for the secret key. Do NOT ask clarifying questions; if public documentation is unavailable, state that clearly. Be precise and factual.", provider, prefix, notes)
+}
+
+// runManusTask — диспатч задачи в Manus через cli.py (run --wait) и вернуть результат.
+func runManusTask(cliPath, keysPath, prompt string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "python3", cliPath, prompt, keysPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out), fmt.Errorf("%v: %s", err, string(out))
+	}
+	return string(out), nil
+}
+
+// cleanManusOutput — из вывода cli.py (run --wait) оставить только
+// фактический результат агента (после маркера «Результат:»), отбросив обвязку.
+func cleanManusOutput(raw string) string {
+	idx := strings.Index(raw, "Результат:")
+	if idx < 0 {
+		return strings.TrimSpace(raw)
+	}
+	return strings.TrimSpace(raw[idx+len("Результат:"):])
 }
 
 // runKeyDrop — подкоманда `hunter keydrop`: забирает .md с ключами
