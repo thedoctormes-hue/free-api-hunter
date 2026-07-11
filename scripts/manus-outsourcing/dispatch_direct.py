@@ -78,7 +78,28 @@ async def main():
                 continue
             await client.wait_for_completion(task_id, timeout=280)
             result = await client.get_result(task_id)
-            print(result.text or "")
+            out = []
+            if getattr(result, "text", None):
+                out.append(result.text)
+            # Детальные инструкции часто лежат в текстовом аттачменте (.md/.txt).
+            for att in getattr(result, "attachments", None) or []:
+                if isinstance(att, dict):
+                    u = att.get("url")
+                    ct = att.get("content_type") or ""
+                    fn = att.get("filename") or ""
+                else:
+                    u = getattr(att, "url", None)
+                    ct = getattr(att, "content_type", "") or ""
+                    fn = getattr(att, "filename", "") or ""
+                if u and (ct.startswith("text/") or fn.endswith((".md", ".txt", ".json"))):
+                    try:
+                        import urllib.request
+                        req = urllib.request.Request(u, headers={"User-Agent": "krv/1.0"})
+                        data = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "replace")
+                        out.append("\n\n" + data)
+                    except Exception as e:  # noqa: BLE001
+                        out.append("\n\n[attachment %s not fetched: %s]" % (fn, e))
+            print("\n".join(out))
             await client.close()
             return
         except ManusTimeoutError as e:
