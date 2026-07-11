@@ -138,6 +138,44 @@ Registry (таблица `keys`), после чего удаляет `.md` с Д
 Триггер: `krv-keydrop.timer` (systemd) → `krv-keydrop.service`
 (ExecStart: `bin/hunter keydrop -data-dir data -disk-dir free-api-hunter/keys`).
 
+## Фаза 3″ — Агентская валидация неизвестных провайдеров (Manus как LLM-слой)
+
+Реализовано (2026-07-11, ЗавЛаб «го»): подкоманда `hunter validate-pending` +
+`scripts/manus-outsourcing/dispatch_direct.py`.
+
+Проблема («1 блокер»): извлечённый ключ без LLM/человека не даёт ни эндпоинта, ни
+способа проверки возможностей. Решение (подход #2, предложен ЗавЛабом):
+извлечённые LLM-ключи сами становятся «тонким агентным LLM-слоем», который
+находит документацию, пишет инструкции и тестирует следующие ключи.
+
+Поток:
+1. `keydrop` извлекает ключи, вызывает механический `validator.ValidateKey`.
+   Если `live_status != "valid"` (неизвестный провайдер / нет `/models`),
+   keydrop ДОПИСЫВАЕТ запись в `data/pending_validation.json` (сигнал).
+2. `validate-pending` читает сигнал. Для `verified` провайдеров — механическая
+   пере-проверка. Для неизвестных — диспатч задачи агенту **Manus** через
+   `scripts/manus-outsourcing/dispatch_direct.py` (прямой Manus API v2, в обход
+   локального TaskManager/redis). В промпт передаётся ТОЛЬКО провайдер + notes —
+   сырой ключ НЕ уходит из vault. Manus (агент с tool-use + LLM-мозгами) ищет
+   публичную документацию, возвращает эндпоинт / метод аутентификации / пример
+   запроса. Результат пишется в `instructions` (added_by=`krv-agent-manus`).
+3. Сигнал очищается (успешно обработанные записи удаляются; упавшие остаются
+   в очереди на повтор).
+
+Конфиг: `config/validator_endpoints.json`. Провайдеры с `"verified": true`
+валидируются механически; `"verified": false` (напр. `manus`) → через агента.
+`dispatch_direct.py` ротирует 5 аккаунтов Manus и повторяет при 429.
+
+Триггер: `krv-validate-pending.timer` (systemd, каждые 15 мин) →
+`krv-validate-pending.service` (ExecStart: `bin/hunter validate-pending ...`).
+
+Статус живого прогона (2026-07-11): механизм доказан на уровне API (curl:
+`task.create` + `task.listMessages` + `task.detail` + `get_result` отработали,
+извлечён результат «pong»). Полный end-to-end прогон `validate-pending` через
+Мануса временно заблокирован: интенсивная отладка выжгла дневной лимит кредитов
+Мануса (5 аккаунтов × 300 = 1500/день, ушли в минус). Возобновится после
+дневного сброса кредитов (~5 ч). Это артефакт отладки, не дефект пайплайна.
+
 ## Связанные документы
 
 - secrets-architecture.md (план SecretRef + lab-vault)
