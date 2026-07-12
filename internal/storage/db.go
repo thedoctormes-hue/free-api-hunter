@@ -71,6 +71,24 @@ func SaveProviders(providers []*models.Provider, path string) error {
 	return tx.Commit()
 }
 
+// UpdateProviderStatus — обновить статус провайдера (веб-верификация) + last_verified.
+func UpdateProviderStatus(name, status string) error {
+	db := database.DB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := db.Exec(`UPDATE providers SET status = ?, last_verified = ?, updated_at = ? WHERE name = ?`,
+		status, now, now, name)
+	if err != nil {
+		return fmt.Errorf("update provider status %s: %w", name, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("provider %q not found", name)
+	}
+	return nil
+}
+
 // LoadProviders — загрузить всех провайдеров
 func LoadProviders(path string) ([]*models.Provider, error) {
 	db := database.DB()

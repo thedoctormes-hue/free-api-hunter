@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
-import { getProviders } from '@/api/providers'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { getProviders, setProviderStatus } from '@/api/providers'
 import type { Provider, ProviderFilters } from '@/lib/types'
 
 export function useProviders(filters?: ProviderFilters) {
@@ -26,5 +26,16 @@ export function useProviders(filters?: ProviderFilters) {
       })) as Provider[]
     },
     staleTime: 5 * 60 * 1000, // 5 min
+  })
+}
+
+export function useSetProviderStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ name, status }: { name: string; status: string }) =>
+      setProviderStatus(name, status),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['providers'] })
+    },
   })
 }

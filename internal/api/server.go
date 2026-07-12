@@ -223,6 +223,7 @@ func (s *Server) routes() {
 	// Findings list + verdict triage (PUBLIC — read-only list + web triage, no X-API-Key)
 	s.mux.Handle("/api/v1/findings", buildHandler(s.handleFindings, "/api/v1/findings"))
 	s.mux.Handle("/api/v1/findings/verdict", buildHandler(s.handleSetVerdict, "/api/v1/findings"))
+	s.mux.Handle("/api/v1/provider-status", buildHandler(s.handleSetProviderStatus, "/api/v1/provider-status"))
 	// Stats (PUBLIC — read-only dashboard data, no X-API-Key)
 	s.mux.Handle("/api/v1/stats", buildHandler(s.handleStats, "/api/v1/stats"))
 	// Scan history (PUBLIC — read-only dashboard history, no X-API-Key)
@@ -506,6 +507,12 @@ func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// validProviderStatuses — допустимые значения статуса провайдера (веб-верификация).
+var validProviderStatuses = map[string]bool{
+	"verified": true, "confirmed": true, "claimed": true,
+	"unverified": true, "expired": true, "deprioritized": true,
+}
+
 // handleSetVerdict — POST /api/v1/findings/verdict — веб-триаж находки.
 // Тело JSON: {"source":"<url>","verdict":"confirmed|rejected|backlog|already_in_use"}.
 // Матч по source (URL), НЕ по индексу (индекс нестабилен между ре-бриджами).
@@ -549,6 +556,38 @@ func (s *Server) handleSetVerdict(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.json(w, http.StatusOK, response{Success: true, Meta: &meta{Version: "0.1.0"}})
+}
+
+// handleSetProviderStatus — POST /api/v1/provider-status — веб-верификация провайдера.
+// Тело JSON: {"name":"<provider>","status":"confirmed|expired|..."}.
+// Публичный (как вердикты находок) — внутренний триаж.
+func (s *Server) handleSetProviderStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.jsonErr(w, http.StatusMethodNotAllowed, "method not allowed; only POST is supported")
+		return
+	}
+
+	var req struct {
+		Name   string `json:"name"`
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.jsonErr(w, http.StatusBadRequest, fmt.Sprintf("invalid JSON body: %v", err))
+		return
+	}
+	if req.Name == "" || req.Status == "" {
+		s.jsonErr(w, http.StatusBadRequest, "name and status are required")
+		return
+	}
+	if !validProviderStatuses[req.Status] {
+		s.jsonErr(w, http.StatusBadRequest, "invalid status (allowed: verified|confirmed|claimed|unverified|expired|deprioritized)")
+		return
+	}
+	if err := storage.UpdateProviderStatus(req.Name, req.Status); err != nil {
+		s.jsonErr(w, http.StatusInternalServerError, fmt.Sprintf("update failed: %v", err))
+		return
+	}
 	s.json(w, http.StatusOK, response{Success: true, Meta: &meta{Version: "0.1.0"}})
 }
 

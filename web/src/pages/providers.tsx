@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useProviders } from '@/hooks/use-providers'
+import { useProviders, useSetProviderStatus } from '@/hooks/use-providers'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -21,6 +21,8 @@ export function ProvidersPage({ searchQuery: headerSearch }: { searchQuery?: str
   const [showExportMenu, setShowExportMenu] = useState(false)
 
   const { data: providers, isLoading } = useProviders()
+  const setStatus = useSetProviderStatus()
+  const [queueOnly, setQueueOnly] = useState(false)
 
   const filtered = useMemo(() => {
     if (!providers) return []
@@ -61,7 +63,7 @@ export function ProvidersPage({ searchQuery: headerSearch }: { searchQuery?: str
     })
 
     return result
-  }, [providers, statusFilter, ccFilter, search, sortBy, sortOrder])
+  }, [providers, statusFilter, ccFilter, search, sortBy, sortOrder, queueOnly])
 
   const statuses = ['verified', 'confirmed', 'claimed', 'unverified', 'expired', 'deprioritized']
 
@@ -118,6 +120,14 @@ export function ProvidersPage({ searchQuery: headerSearch }: { searchQuery?: str
           <option value="false">No Credit Card</option>
           <option value="true">Requires CC</option>
         </select>
+
+        <button
+          type="button"
+          onClick={() => setQueueOnly((v) => !v)}
+          className={`h-8 px-3 text-sm rounded-lg border transition-colors ${queueOnly ? 'border-[var(--accent)] bg-[var(--accent-muted)] text-[var(--accent)]' : 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]'}`}
+        >
+          Нужно проверить
+        </button>
 
         <input
           type="text"
@@ -208,17 +218,24 @@ export function ProvidersPage({ searchQuery: headerSearch }: { searchQuery?: str
       ) : view === 'cards' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((provider) => (
-            <ProviderCard key={provider.name} provider={provider} />
+            <ProviderCard
+              key={provider.name}
+              provider={provider}
+              onSetStatus={(status) => setStatus.mutate({ name: provider.name, status })}
+            />
           ))}
         </div>
       ) : (
-        <ProviderTable providers={filtered} />
+        <ProviderTable
+          providers={filtered}
+          onSetStatus={(name, status) => setStatus.mutate({ name, status })}
+        />
       )}
     </div>
   )
 }
 
-function ProviderCard({ provider }: { provider: Provider }) {
+function ProviderCard({ provider, onSetStatus }: { provider: Provider; onSetStatus?: (status: string) => void }) {
   return (
     <Card hover data-testid="provider-card">
       <CardContent>
@@ -266,12 +283,31 @@ function ProviderCard({ provider }: { provider: Provider }) {
             Discovered: {formatDate(provider.discovered_at)}
           </p>
         )}
+
+        {onSetStatus && (
+          <div className="mt-3 flex flex-wrap gap-2 pt-3 border-t border-[var(--border)]">
+            <button
+              type="button"
+              onClick={() => onSetStatus('expired')}
+              className="inline-flex items-center h-7 px-2.5 text-xs rounded-md border border-[var(--status-expired)] text-[var(--status-expired)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+            >
+              Не работает — исключить
+            </button>
+            <button
+              type="button"
+              onClick={() => onSetStatus('confirmed')}
+              className="inline-flex items-center h-7 px-2.5 text-xs rounded-md border border-[var(--status-verified)] text-[var(--status-verified)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+            >
+              Работает, ключи есть — исключить
+            </button>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
 }
 
-function ProviderTable({ providers }: { providers: Provider[] }) {
+function ProviderTable({ providers, onSetStatus }: { providers: Provider[]; onSetStatus?: (name: string, status: string) => void }) {
   return (
     <Card>
       <div className="overflow-x-auto">
@@ -283,6 +319,7 @@ function ProviderTable({ providers }: { providers: Provider[] }) {
               <th className="text-left px-4 py-3 text-[var(--text-muted)] font-medium">Models</th>
               <th className="text-left px-4 py-3 text-[var(--text-muted)] font-medium">CC</th>
               <th className="text-left px-4 py-3 text-[var(--text-muted)] font-medium">Discovered</th>
+              <th className="text-left px-4 py-3 text-[var(--text-muted)] font-medium">Действия</th>
             </tr>
           </thead>
           <tbody>
@@ -302,6 +339,26 @@ function ProviderTable({ providers }: { providers: Provider[] }) {
                 <td className="px-4 py-3 text-[var(--text-secondary)]">{p.models.length}</td>
                 <td className="px-4 py-3 text-[var(--text-secondary)]">{p.credit_card ? '💳' : '✅'}</td>
                 <td className="px-4 py-3 text-[var(--text-muted)]">{formatDate(p.discovered_at)}</td>
+                <td className="px-4 py-3">
+                  {onSetStatus && (
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => onSetStatus(p.name, 'expired')}
+                        className="inline-flex items-center h-6 px-2 text-xs rounded-md border border-[var(--status-expired)] text-[var(--status-expired)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+                      >
+                        Не работает
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onSetStatus(p.name, 'confirmed')}
+                        className="inline-flex items-center h-6 px-2 text-xs rounded-md border border-[var(--status-verified)] text-[var(--status-verified)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+                      >
+                        Работает, ключи есть
+                      </button>
+                    </div>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
