@@ -229,10 +229,11 @@ func (s *Server) routes() {
 	s.mux.Handle("/api/v1/scan-history", buildHandler(s.handleScanHistory, "/api/v1/scan-history"))
 	// Scan trigger (PROTECTED — mutating, requires X-API-Key)
 	s.mux.Handle("/api/v1/scan", buildHandler(s.handleScanCombined))
-	// TTS providers (PROTECTED — requires X-API-Key)
-	s.mux.Handle("/api/v1/tts/providers", buildHandler(s.handleTTSProviders))
-	s.mux.Handle("/api/v1/tts/providers/", buildHandler(s.handleTTSProviderByID))
-	s.mux.Handle("/api/v1/tts/stats", buildHandler(s.handleTTSStats))
+	// TTS providers (PUBLIC — read-only catalog, no X-API-Key; prefix covers /{id})
+	s.mux.Handle("/api/v1/tts/providers", buildHandler(s.handleTTSProviders, "/api/v1/tts/providers"))
+	s.mux.Handle("/api/v1/tts/providers/", buildHandler(s.handleTTSProviderByID, "/api/v1/tts/providers"))
+	// TTS stats (PUBLIC — read-only, no X-API-Key)
+	s.mux.Handle("/api/v1/tts/stats", buildHandler(s.handleTTSStats, "/api/v1/tts/stats"))
 }
 
 // ListenAndServe — запустить сервер
