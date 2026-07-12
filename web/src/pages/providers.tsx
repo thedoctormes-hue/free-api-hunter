@@ -22,7 +22,7 @@ export function ProvidersPage({ searchQuery: headerSearch }: { searchQuery?: str
 
   const { data: providers, isLoading } = useProviders()
   const setStatus = useSetProviderStatus()
-  const [queueOnly, setQueueOnly] = useState(false)
+  const [queueOnly, setQueueOnly] = useState(true)
 
   const filtered = useMemo(() => {
     if (!providers) return []
@@ -288,15 +288,17 @@ function ProviderCard({ provider, onSetStatus }: { provider: Provider; onSetStat
           <div className="mt-3 flex flex-wrap gap-2 pt-3 border-t border-[var(--border)]">
             <button
               type="button"
+              disabled={provider.status === 'expired'}
               onClick={() => onSetStatus('expired')}
-              className="inline-flex items-center h-7 px-2.5 text-xs rounded-md border border-[var(--status-expired)] text-[var(--status-expired)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+              className="inline-flex items-center h-7 px-2.5 text-xs rounded-md border border-[var(--status-expired)] text-[var(--status-expired)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               Не работает — исключить
             </button>
             <button
               type="button"
+              disabled={provider.status === 'confirmed'}
               onClick={() => onSetStatus('confirmed')}
-              className="inline-flex items-center h-7 px-2.5 text-xs rounded-md border border-[var(--status-verified)] text-[var(--status-verified)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+              className="inline-flex items-center h-7 px-2.5 text-xs rounded-md border border-[var(--status-verified)] text-[var(--status-verified)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               Работает, ключи есть — исключить
             </button>
@@ -344,15 +346,17 @@ function ProviderTable({ providers, onSetStatus }: { providers: Provider[]; onSe
                     <div className="flex flex-wrap gap-1.5">
                       <button
                         type="button"
+                        disabled={p.status === 'expired'}
                         onClick={() => onSetStatus(p.name, 'expired')}
-                        className="inline-flex items-center h-6 px-2 text-xs rounded-md border border-[var(--status-expired)] text-[var(--status-expired)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+                        className="inline-flex items-center h-6 px-2 text-xs rounded-md border border-[var(--status-expired)] text-[var(--status-expired)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                       >
                         Не работает
                       </button>
                       <button
                         type="button"
+                        disabled={p.status === 'confirmed'}
                         onClick={() => onSetStatus(p.name, 'confirmed')}
-                        className="inline-flex items-center h-6 px-2 text-xs rounded-md border border-[var(--status-verified)] text-[var(--status-verified)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+                        className="inline-flex items-center h-6 px-2 text-xs rounded-md border border-[var(--status-verified)] text-[var(--status-verified)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                       >
                         Работает, ключи есть
                       </button>
