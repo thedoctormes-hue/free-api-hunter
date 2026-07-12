@@ -122,16 +122,20 @@ func Run(opts Options) error {
 				logger.Printf("write key %s: %v", vp, werr)
 				continue
 			}
-			rec, verr := validator.ValidateKey(provider, name, ecfg, true, "")
+			recs, verr := validator.ValidateKey(provider, name, ecfg, true, "")
 			if verr != nil {
 				logger.Printf("validate %s/%s: %v", provider, name, verr)
 				continue
 			}
+			if len(recs) == 0 {
+				continue
+			}
+			rec := recs[0]
 			if notes != "" {
 				rec.Instructions = strings.TrimSpace(rec.Instructions + "\n\nHuman notes: " + notes)
 			}
 			rec.AddedBy = opts.AddedBy
-			if uerr := validator.UpsertKey(db, rec); uerr != nil {
+			if uerr := validator.UpsertKey(db, &rec); uerr != nil {
 				logger.Printf("upsert %s/%s: %v", provider, name, uerr)
 				continue
 			}

@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,7 +27,8 @@ import (
 )
 
 // vaultBase — корень vault для free-api-hunter (ключи лежат в подкаталогах провайдеров).
-const vaultBase = "/root/LabDoctorM/vault/free-api-hunter"
+// var (а не const), чтобы тесты могли переопределить на t.TempDir().
+var vaultBase = "/root/LabDoctorM/vault/free-api-hunter"
 
 var logger = log.New(os.Stderr, "[validator] ", log.LstdFlags)
 
@@ -128,14 +130,107 @@ func liveStatusFromResult(res *verifier.KeyVerifyResult) string {
 	}
 }
 
-// ValidateKey — спроверить один ключ из vault и вернуть запись (без записи в БД).
+// probeSpecFromConfig — построить per-provider probe-адаптер (KRV-E2) из
+// конфигурации endpoint'а. Возвращает ok=false, если адаптер невозможно
+// построить (шаблонированный base_url с {account_id}, неизвестный auth_type),
+// — тогда вызывающий пишет live_status=unknown (PAT-005, не угадываем).
+func probeSpecFromConfig(cfg EndpointConfig) (verifier.ProbeSpec, bool) {
+	if cfg.BaseURL == "" || cfg.AuthType == "unknown" {
+		return verifier.ProbeSpec{}, false
+	}
+	// Шаблонированный base_url (напр. cloudflare {account_id}) пока не поддерживаем.
+	if strings.Contains(cfg.BaseURL, "{") {
+		return verifier.ProbeSpec{}, false
+	}
+	spec := verifier.ProbeSpec{Method: cfg.Method}
+	if spec.Method == "" {
+		spec.Method = http.MethodGet
+	}
+	spec.URL = strings.TrimRight(cfg.BaseURL, "/") + cfg.ModelsPath
+	switch {
+	case strings.HasPrefix(cfg.AuthType, "bearer"):
+		spec.AuthType = "bearer"
+	case strings.HasPrefix(cfg.AuthType, "query"):
+		spec.AuthType = "query"
+		spec.QueryParam = "apikey"
+	case strings.HasPrefix(cfg.AuthType, "header"):
+		spec.AuthType = "header"
+		// имя заголовка может быть задано после ':' (напр. "header:xi-api-key")
+		name := strings.TrimSpace(strings.TrimPrefix(cfg.AuthType, "header"))
+		name = strings.TrimPrefix(name, ":")
+		if name == "" {
+			name = "xi-api-key"
+		}
+		spec.AuthHeader = name
+	case cfg.AuthType == "none":
+		spec.AuthType = "none"
+	default:
+		return verifier.ProbeSpec{}, false
+	}
+	return spec, true
+}
+
+// splitKeys — разбить содержимое vault-файла на отдельные ключи (KRV-E3).
+// Каждая непустая (после TrimSpace) строка — отдельный ключ. Пустые строки
+// (включая завершающий перевод) игнорируются; порядок сохраняется.
+func splitKeys(content string) []string {
+	normalized := strings.ReplaceAll(content, "\r\n", "\n")
+	raw := strings.Split(normalized, "\n")
+	out := make([]string, 0, len(raw))
+	for _, l := range raw {
+		l = strings.TrimSpace(l)
+		if l != "" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// ValidateKey — спроверить ключи из ОДНОГО vault-файла и вернуть записи
+// (без записи в БД). KRV-E3: файл может содержать НЕСКОЛЬКО ключей (по строкам).
+//   - один ключ  -> key_id = "provider/file" (обратная совместимость)
+//   - N ключей   -> key_id = "provider/file#N" (N с 1)
+//
 // probe=false => сухой прогон, сети нет, live_status="unknown".
 // registryStatus — статический статус провайдера из providers.json.
-func ValidateKey(provider, keyFile string, cfg EndpointConfig, probe bool, registryStatus string) (*KeyRecord, error) {
+func ValidateKey(provider, keyFile string, cfg EndpointConfig, probe bool, registryStatus string) ([]KeyRecord, error) {
 	vaultPath := filepath.Join(vaultBase, provider, keyFile)
-	keyID := provider + "/" + keyFile
 
-	rec := &KeyRecord{
+	secret, err := os.ReadFile(vaultPath)
+	if err != nil {
+		rec := validateRawSecret(provider, keyFile, provider+"/"+keyFile, vaultPath, "", cfg, probe, registryStatus)
+		rec.LiveStatus = "unknown"
+		rec.Instructions = strings.TrimSpace(rec.Instructions + " | read_error: " + err.Error())
+		return []KeyRecord{rec}, nil
+	}
+
+	// KRV-E3: каждая непустая строка файла — отдельный ключ.
+	keys := splitKeys(string(secret))
+	if len(keys) == 0 {
+		rec := validateRawSecret(provider, keyFile, provider+"/"+keyFile, vaultPath, "", cfg, probe, registryStatus)
+		rec.LiveStatus = "unknown"
+		rec.Instructions = strings.TrimSpace(rec.Instructions + " | empty file: no keys")
+		return []KeyRecord{rec}, nil
+	}
+
+	records := make([]KeyRecord, 0, len(keys))
+	for i, raw := range keys {
+		keyID := provider + "/" + keyFile
+		if len(keys) > 1 {
+			keyID = fmt.Sprintf("%s#%d", keyID, i+1)
+		}
+		rec := validateRawSecret(provider, keyFile, keyID, vaultPath, raw, cfg, probe, registryStatus)
+		records = append(records, rec)
+	}
+	return records, nil
+}
+
+// validateRawSecret — проверить один сырой секрет (одну строку файла) и
+// построить KeyRecord. Выделено из ValidateKey, чтобы не дублировать логику
+// для мульти-ключевых файлов (KRV-E3) и не дублировать E1 (используем
+// verifier.VerifyAPIKeyWithSecretSpec, а не VerifyRawKey).
+func validateRawSecret(provider, keyFile, keyID, vaultPath, rawSecret string, cfg EndpointConfig, probe bool, registryStatus string) KeyRecord {
+	rec := KeyRecord{
 		Provider:       provider,
 		KeyID:          keyID,
 		VaultPath:      vaultPath,
@@ -146,48 +241,50 @@ func ValidateKey(provider, keyFile string, cfg EndpointConfig, probe bool, regis
 		AddedAt:        models.Now(),
 	}
 
-	// PAT-005: endpoint неизвестен — не угадываем, не стучимся.
-	if cfg.BaseURL == "" || cfg.AuthType == "unknown" {
+	// PAT-005: endpoint неизвестен (или шаблонирован) — не угадываем, не стучимся.
+	if cfg.BaseURL == "" || cfg.AuthType == "unknown" || strings.Contains(cfg.BaseURL, "{") {
 		rec.LiveStatus = "unknown"
-		rec.Instructions = strings.TrimSpace(rec.Instructions + " [endpoint unknown: not probed]")
-		return rec, nil
+		rec.Instructions = strings.TrimSpace(rec.Instructions + " [endpoint unknown/templated: not probed]")
+		return rec
 	}
 
 	// Сухой прогон без сети.
 	if !probe {
 		rec.LiveStatus = "unknown"
 		rec.Instructions = strings.TrimSpace(rec.Instructions + " [dry-run: not probed]")
-		return rec, nil
+		return rec
 	}
 
-	// Читаем КОНКРЕТНЫЙ файл ключа и шлём живую пробу именно ЭТИМ секретом.
-	// VerifyAPIKeyWithSecret проверяет переданный secret напрямую (без vault,
-	// без default-ключа провайдера) — тем самым валидируется этот файл vault.
-	secret, err := os.ReadFile(vaultPath)
-	if err != nil {
+	// Строим per-provider адаптер пробы (KRV-E2).
+	spec, ok := probeSpecFromConfig(cfg)
+	if !ok {
 		rec.LiveStatus = "unknown"
-		rec.Instructions = "read_error: " + err.Error()
-		return rec, nil
+		rec.Instructions = strings.TrimSpace(rec.Instructions + " [probe adapter unsupported: not probed]")
+		return rec
 	}
-	realKey := strings.TrimSpace(string(secret))
-	endpoint := strings.TrimRight(cfg.BaseURL, "/")
 
-	// Живая проба КОНКРЕТНОГО секрета из этого файла (PAT-005: не default-ключ).
-	res := verifier.VerifyAPIKeyWithSecret(provider, endpoint, realKey)
+	// Живая проба КОНКРЕТНОГО секрета (без vault, без default-ключа провайдера).
+	// Для bearer переиспользуем E1-функцию main VerifyAPIKeyWithSecret (она уже
+	// пробует /models и /v1/models с Bearer) — E1 НЕ дублируем. Для query/header/
+	// none используем новый per-provider адаптер VerifyAPIKeyWithSecretSpec (KRV-E2).
+	var res *verifier.KeyVerifyResult
+	if spec.AuthType == "bearer" {
+		res = verifier.VerifyAPIKeyWithSecret(provider, strings.TrimRight(cfg.BaseURL, "/"), rawSecret)
+	} else {
+		res = verifier.VerifyAPIKeyWithSecretSpec(provider, spec, rawSecret)
+	}
 	rec.LiveStatus = liveStatusFromResult(res)
 	rec.LastValidated = res.CheckedAt
 	if res.Error != "" {
 		rec.Instructions = strings.TrimSpace(rec.Instructions + " | probe_error: " + res.Error)
 	}
-
-	// Модели приходят прямо из пробы; копируем также лимиты в инструкции.
 	rec.Models = res.Models
 	if len(res.Limits) > 0 {
 		for k, v := range res.Limits {
 			rec.Instructions = strings.TrimSpace(rec.Instructions + fmt.Sprintf(" | limit:%s=%s", k, v))
 		}
 	}
-	return rec, nil
+	return rec
 }
 
 func orUnknown(s string) string {
@@ -295,36 +392,38 @@ func Run(cfg Config) error {
 			continue
 		}
 		for _, f := range files {
-			total++
 			status := statuses[ecfg.RegistryName]
 			if status == "" {
 				status = "unknown"
 			}
-			rec, err := ValidateKey(p, f, ecfg, !cfg.DryRun, status)
+			recs, err := ValidateKey(p, f, ecfg, !cfg.DryRun, status)
 			if err != nil {
 				logger.Printf("error %s/%s: %v", p, f, err)
 				unknown++
 				continue
 			}
-			rec.AddedBy = cfg.AddedBy
-			switch rec.LiveStatus {
-			case "valid":
-				valid++
-			case "expired":
-				expired++
-			case "rate_limited":
-				rateLimited++
-			default:
-				unknown++
-			}
-			if cfg.DryRun {
-				logger.Printf("[dry-run] %s -> live=%s registry=%s models=%d",
-					rec.KeyID, rec.LiveStatus, rec.RegistryStatus, len(rec.Models))
-			} else {
-				if err := UpsertKey(database.DB(), rec); err != nil {
-					logger.Printf("upsert failed %s: %v", rec.KeyID, err)
+			for _, rec := range recs {
+				total++
+				rec.AddedBy = cfg.AddedBy
+				switch rec.LiveStatus {
+				case "valid":
+					valid++
+				case "expired":
+					expired++
+				case "rate_limited":
+					rateLimited++
+				default:
+					unknown++
+				}
+				if cfg.DryRun {
+					logger.Printf("[dry-run] %s -> live=%s registry=%s models=%d",
+						rec.KeyID, rec.LiveStatus, rec.RegistryStatus, len(rec.Models))
 				} else {
-					logger.Printf("[ok] %s -> live=%s", rec.KeyID, rec.LiveStatus)
+					if uerr := UpsertKey(database.DB(), &rec); uerr != nil {
+						logger.Printf("upsert failed %s: %v", rec.KeyID, uerr)
+					} else {
+						logger.Printf("[ok] %s -> live=%s", rec.KeyID, rec.LiveStatus)
+					}
 				}
 			}
 		}

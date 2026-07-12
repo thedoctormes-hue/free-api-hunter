@@ -457,13 +457,19 @@ func runValidatePending(args []string) {
 		ecfg := em.Providers[e.Provider]
 		if ecfg.Verified {
 			name := filepath.Base(e.VaultPath)
-			rec, verr := validator.ValidateKey(e.Provider, name, ecfg, true, "")
+			recs, verr := validator.ValidateKey(e.Provider, name, ecfg, true, "")
 			if verr != nil {
 				logger.Printf("mech validate %s: %v", e.KeyID, verr)
 				failed = append(failed, e)
 				continue
 			}
-			if uerr := validator.UpsertKey(db, rec); uerr != nil {
+			if len(recs) == 0 {
+				logger.Printf("mech validate %s: no keys in file", e.KeyID)
+				failed = append(failed, e)
+				continue
+			}
+			rec := recs[0]
+			if uerr := validator.UpsertKey(db, &rec); uerr != nil {
 				logger.Printf("upsert %s: %v", e.KeyID, uerr)
 				failed = append(failed, e)
 				continue

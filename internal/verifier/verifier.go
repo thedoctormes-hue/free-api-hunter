@@ -174,6 +174,28 @@ func resolveKey(key *models.APIKey) (string, error) {
 	return vault.GetDefaultKey(key.ProviderName)
 }
 
+// readProbeStatus — общий разбор ответа пробы в KeyVerifyResult (KRV-E2).
+func readProbeStatus(resp *http.Response, result *KeyVerifyResult) {
+	defer resp.Body.Close()
+	result.StatusCode = resp.StatusCode
+
+	if resp.StatusCode == 200 {
+		result.IsActive = true
+		body, err := io.ReadAll(resp.Body)
+		if err == nil {
+			parseModels(body, result)
+		}
+	} else if resp.StatusCode == 401 {
+		result.Error = "invalid_key"
+	} else if resp.StatusCode == 403 {
+		result.Error = "forbidden"
+	} else if resp.StatusCode == 429 {
+		result.Error = "rate_limited"
+	} else {
+		result.Error = fmt.Sprintf("http_%d", resp.StatusCode)
+	}
+}
+
 // probeKey — живая проба конкретного секрета (GET /models + Bearer).
 // НЕ трогает vault и НЕ мутирует models.APIKey. Общий хелпер для
 // VerifyAPIKey и VerifyAPIKeyWithSecret, чтобы не дублировать логику пробы.
@@ -208,32 +230,96 @@ func probeKey(endpoint, secret string) *KeyVerifyResult {
 			result.Error = err.Error()
 			continue
 		}
-		func() {
-			defer resp.Body.Close()
-			result.StatusCode = resp.StatusCode
-
-			if resp.StatusCode == 200 {
-				result.IsActive = true
-				body, err := io.ReadAll(resp.Body)
-				if err == nil {
-					parseModels(body, result)
-				}
-			} else if resp.StatusCode == 401 {
-				result.Error = "invalid_key"
-			} else if resp.StatusCode == 403 {
-				result.Error = "forbidden"
-			} else if resp.StatusCode == 429 {
-				result.Error = "rate_limited"
-			} else {
-				result.Error = fmt.Sprintf("http_%d", resp.StatusCode)
-			}
-		}()
+		readProbeStatus(resp, result)
 
 		if result.IsActive {
 			break
 		}
 	}
 
+	return result
+}
+
+// ProbeSpec — per-provider адаптер живой пробы (KRV-E2). Описывает, КАК
+// аутентифицировать запрос к провайдеру, вместо жёстко зашитого
+// "Authorization: Bearer" + GET /models.
+type ProbeSpec struct {
+	Method     string // HTTP method; пусто => GET
+	URL        string // полный URL пробы (base_url + models_path)
+	AuthType   string // bearer | query | header | none
+	QueryParam string // query: имя параметра для секрета (по умолчанию "apikey")
+	AuthHeader string // header: имя заголовка для секрета (напр. "xi-api-key")
+}
+
+// VerifyAPIKeyWithSecretSpec — живая проба КОНКРЕТНОГО секрета провайдера с
+// применением per-provider адаптера (KRV-E2). Отличается от E1-функции
+// VerifyAPIKeyWithSecret (всегда Bearer + /models) тем, что учитывает
+// auth_type из конфигурации endpoint'а. Саму E1-функцию НЕ дублируем.
+func VerifyAPIKeyWithSecretSpec(provider string, spec ProbeSpec, secret string) *KeyVerifyResult {
+	res := probeKeySpec(spec, secret)
+	res.Provider = provider
+	return res
+}
+
+// probeKeySpec — построить и отправить запрос пробы согласно ProbeSpec (KRV-E2).
+func probeKeySpec(spec ProbeSpec, secret string) *KeyVerifyResult {
+	result := &KeyVerifyResult{
+		CheckedAt: models.Now(),
+		Limits:    make(map[string]string),
+	}
+	if spec.URL == "" {
+		result.Error = "invalid_endpoint: empty url"
+		return result
+	}
+	// Validate endpoint URL (SSRF protection). В тестах переопределяется.
+	if _, valErr := ValidateOutboundURL(spec.URL); valErr != nil {
+		result.Error = "invalid_endpoint: " + valErr.Error()
+		return result
+	}
+
+	method := spec.Method
+	if method == "" {
+		method = http.MethodGet
+	}
+
+	target := spec.URL
+	switch spec.AuthType {
+	case "query":
+		q := spec.QueryParam
+		if q == "" {
+			q = "apikey"
+		}
+		sep := "?"
+		if strings.Contains(target, "?") {
+			sep = "&"
+		}
+		target = target + sep + q + "=" + secret
+	}
+
+	req, err := http.NewRequest(method, target, nil)
+	if err != nil {
+		result.Error = err.Error()
+		return result
+	}
+	req.Header.Set("User-Agent", "FreeAPIHunter/0.1")
+	switch spec.AuthType {
+	case "bearer", "":
+		req.Header.Set("Authorization", "Bearer "+secret)
+	case "header":
+		hdr := spec.AuthHeader
+		if hdr == "" {
+			hdr = "xi-api-key"
+		}
+		req.Header.Set(hdr, secret)
+		// query/none: секрет уже в URL (query) или отсутствует вовсе
+	}
+
+	resp, err := HTTPClient.Do(req)
+	if err != nil {
+		result.Error = err.Error()
+		return result
+	}
+	readProbeStatus(resp, result)
 	return result
 }
 
