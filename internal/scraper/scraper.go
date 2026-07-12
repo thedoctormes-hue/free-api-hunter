@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -520,6 +521,182 @@ func ScrapeHackerNews(query string, limit int) []models.Finding {
 	return findings
 }
 
+// ─── Search-based source (SearXNG) ───
+// Обходит заблокированный Reddit API (403 на анонимный .json): вместо прямого
+// обращения к reddit.com/r/<sub>/search.json идём через поисковик SearXNG с
+// запросом вида "site:reddit.com/r/<sub> free LLM API credits".
+
+// defaultSearxngURL — базовый URL инстанса SearXNG по умолчанию.
+// Взят из конфигурации OpenClaw (web_search.searxng.baseUrl).
+// Переопределяется через env SEARXNG_URL (без хардкода ключей/токенов).
+const defaultSearxngURL = "http://localhost:8889"
+
+// searxngBaseURL — финальный базовый URL (env имеет приоритет над default).
+var searxngBaseURL = func() string {
+	if u := os.Getenv("SEARXNG_URL"); u != "" {
+		return strings.TrimRight(u, "/")
+	}
+	return defaultSearxngURL
+}()
+
+// searchClient — переиспользуемый HTTP-клиент для поисковика.
+// 20s таймаут + системный прокси (ProxyFromEnvironment), как в CreateRedditClient.
+var searchClient = newSearchClient()
+
+func newSearchClient() *http.Client {
+	return &http.Client{
+		Timeout: 20 * time.Second,
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+		},
+	}
+}
+
+// searxngResult — один результат поиска SearXNG JSON API.
+type searxngResult struct {
+	Title   string `json:"title"`
+	URL     string `json:"url"`
+	Content string `json:"content"`
+	Snippet string `json:"snippet"`
+}
+
+// searxngResponse — корневая структура ответа /search?format=json.
+type searxngResponse struct {
+	Results []searxngResult `json:"results"`
+}
+
+// detectResultType — определяет тип/категорию источника по хосту URL
+// (детект типа находки: reddit / github / hackernews / video / web).
+func detectResultType(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "web"
+	}
+	host := strings.ToLower(u.Hostname())
+	switch {
+	case strings.Contains(host, "reddit.com") || strings.Contains(host, "redd.it"):
+		return "reddit"
+	case strings.Contains(host, "github.com") || strings.Contains(host, "raw.githubusercontent.com"):
+		return "github"
+	case strings.Contains(host, "news.ycombinator.com") || strings.Contains(host, "hn.algolia.com"):
+		return "hackernews"
+	case strings.Contains(host, "youtube.com") || strings.Contains(host, "youtu.be"):
+		return "video"
+	default:
+		return "web"
+	}
+}
+
+// slugify — приводит строку к безопасному идентификатору (a-z0-9 и _).
+func slugify(s string) string {
+	s = strings.ToLower(s)
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == ' ' || r == '_' || r == '-' || r == '.' || r == ':':
+			b.WriteRune('_')
+		default:
+			// пропускаем всё остальное (пунктуация, двоеточия и т.п.)
+		}
+	}
+	out := b.String()
+	for strings.Contains(out, "__") {
+		out = strings.ReplaceAll(out, "__", "_")
+	}
+	return strings.Trim(out, "_")
+}
+
+// ScrapeSearch — поиск находок через SearXNG JSON API.
+// query — поисковый запрос (например "site:reddit.com/r/LocalLLaMA free LLM API credits").
+// limit — желаемое число результатов (0 = без ограничения).
+func ScrapeSearch(query string, limit int) []models.Finding {
+	if strings.TrimSpace(query) == "" {
+		logger.Printf("ScrapeSearch: empty query, skip")
+		return nil
+	}
+
+	// Лёгкий rate-limit: не чаще ~1 запроса/сек к поисковику.
+	defaultRateLimiter.WaitForRate("searxng")
+
+	reqURL := fmt.Sprintf("%s/search?q=%s&format=json", searxngBaseURL, url.QueryEscape(query))
+	if limit > 0 {
+		reqURL += fmt.Sprintf("&limit=%d", limit)
+	}
+	// Ключ (если инстанс требует аутентификации) — только из env, не хардкодим.
+	if key := os.Getenv("SEARXNG_API_KEY"); key != "" {
+		reqURL += fmt.Sprintf("&api_key=%s", url.QueryEscape(key))
+	}
+
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		logger.Printf("ScrapeSearch: build request failed: %v", err)
+		return nil
+	}
+	req.Header.Set("User-Agent", getRandomUserAgent())
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := searchClient.Do(req)
+	if err != nil {
+		logger.Printf("ScrapeSearch: request to %s failed: %v", searxngBaseURL, err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Printf("ScrapeSearch: %s returned HTTP %d", searxngBaseURL, resp.StatusCode)
+		return nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		logger.Printf("ScrapeSearch: read body failed: %v", err)
+		return nil
+	}
+
+	var sr searxngResponse
+	if err := json.Unmarshal(body, &sr); err != nil {
+		logger.Printf("ScrapeSearch: invalid JSON from %s: %v", searxngBaseURL, err)
+		return nil
+	}
+
+	var findings []models.Finding
+	for i, r := range sr.Results {
+		title := strings.TrimSpace(r.Title)
+		fullURL := strings.TrimSpace(r.URL)
+		if fullURL == "" {
+			continue
+		}
+		// Базовая валидация URL (схема http/https + хост) без тяжёлого SSRF-валидатора.
+		parsed, perr := url.Parse(fullURL)
+		if perr != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+			logger.Printf("ScrapeSearch: skip invalid result URL %q", fullURL)
+			continue
+		}
+
+		// Содержимое: content, при отсутствии — snippet.
+		content := strings.TrimSpace(r.Content)
+		if content == "" {
+			content = strings.TrimSpace(r.Snippet)
+		}
+
+		category := detectResultType(fullURL)
+		sourceID := fmt.Sprintf("search_%s_%s_%d", category, slugify(query), i)
+		findings = append(findings, models.Finding{
+			SourceID:     sourceID,
+			Title:        title,
+			URL:          fullURL,
+			Description:  truncate(content, 500),
+			RawText:      title + "\n\n" + content,
+			DiscoveredAt: models.Now(),
+		})
+	}
+
+	logger.Printf("ScrapeSearch: %d findings for %q", len(findings), query)
+	return findings
+}
+
 // RunScraper — запустить все включённые источники
 func RunScraper(sources []SourceConfig) []models.Finding {
 	var allFindings []models.Finding
@@ -546,6 +723,9 @@ func RunScraper(sources []SourceConfig) []models.Finding {
 		case "hackernews":
 			findings := ScrapeHackerNews(src.URL, 25)
 			allFindings = append(allFindings, findings...)
+		case "search":
+			findings := ScrapeSearch(src.Query, src.Limit)
+			allFindings = append(allFindings, findings...)
 		default:
 			logger.Printf("Unknown source type: %s", src.Type)
 		}
@@ -561,6 +741,8 @@ type SourceConfig struct {
 	Type    string `json:"type"`
 	Name    string `json:"name"`
 	URL     string `json:"url"`
+	Query   string `json:"query"`
+	Limit   int    `json:"limit"`
 	Enabled bool   `json:"enabled"`
 }
 

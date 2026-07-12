@@ -8,21 +8,25 @@
   "sources": [
     {
       "id": "reddit_localllama",
-      "type": "reddit",
-      "name": "Reddit r/LocalLLaMA",
-      "url": "free API credits giveaway",
-      "enabled": false,
+      "type": "search",
+      "name": "Reddit r/LocalLLaMA (search via searxng)",
+      "url": "",
+      "query": "site:reddit.com/r/LocalLLaMA free LLM API credits",
+      "limit": 25,
+      "enabled": true,
       "priority": 1,
-      "notes": "ОТКЛЮЧЕНО: Reddit блокирует без прокси (403/429). Для включения нужен residential proxy или OAuth."
+      "notes": "search-based via searxng (bypasses Reddit API 403)"
     },
     {
       "id": "reddit_machinelearning",
-      "type": "reddit",
-      "name": "Reddit r/MachineLearning",
-      "url": "free LLM API inference",
-      "enabled": false,
+      "type": "search",
+      "name": "Reddit r/MachineLearning (search via searxng)",
+      "url": "",
+      "query": "site:reddit.com/r/MachineLearning free LLM API credits",
+      "limit": 25,
+      "enabled": true,
       "priority": 2,
-      "notes": "ОТКЛЮЧЕНО: Reddit блокирует без прокси (403/429). Для включения нужен residential proxy или OAuth."
+      "notes": "search-based via searxng (bypasses Reddit API 403)"
     },
     {
       "id": "hackernews",
