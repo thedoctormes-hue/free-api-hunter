@@ -40,9 +40,9 @@ export function FindingsPage() {
     }
     if (searchTerm) {
       result = result.filter((f) =>
-        f.title.toLowerCase().includes(searchTerm) ||
-        f.description.toLowerCase().includes(searchTerm) ||
-        f.raw_text.toLowerCase().includes(searchTerm) ||
+        f.title?.toLowerCase().includes(searchTerm) ||
+        f.description?.toLowerCase().includes(searchTerm) ||
+        f.raw_text?.toLowerCase().includes(searchTerm) ||
         (f.provider_name && f.provider_name.toLowerCase().includes(searchTerm))
       )
     }

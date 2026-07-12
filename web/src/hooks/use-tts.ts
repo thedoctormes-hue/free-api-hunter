@@ -4,7 +4,13 @@ import { fetchTTSProviders, fetchTTSStats, type TTSProvider, type TTSStats } fro
 export function useTTSProviders() {
   return useQuery<TTSProvider[]>({
     queryKey: ['tts-providers'],
-    queryFn: fetchTTSProviders,
+    queryFn: async () => {
+      const list = await fetchTTSProviders();
+      return (list ?? []).map((p) => ({
+        ...p,
+        models: Array.isArray(p.models) ? p.models : [],
+      })) as TTSProvider[];
+    },
     staleTime: 5 * 60 * 1000, // 5 минут
   });
 }
