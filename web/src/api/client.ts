@@ -25,7 +25,8 @@ export async function fetchJSON<T>(path: string, params?: Record<string, string>
     throw new ApiError(res.status, `API error: ${res.status} ${res.statusText}`)
   }
 
-  return res.json() as Promise<T>
+  const json = await res.json() as { success: boolean; data: T; error?: string }
+  return json.data
 }
 
 export async function postJSON<T>(path: string, body: unknown): Promise<T> {
