@@ -1,9 +1,10 @@
 {
   "_meta": {
-    "note": "KRV-Validator endpoint map. 'verified:true' = endpoint confirmed by operator (trust live_status). 'verified:false' = HYPOTHESIS, must be confirmed before trusting live_status. PAT-005: unknown endpoints MUST stay auth_type=unknown / base_url='' so the validator writes live_status='unknown' rather than guessing.",
-    "updated": "2026-07-10",
+    "note": "KRV-Validator endpoint map. 'verified:true' = endpoint confirmed by operator OR by live run (trust live_status). 'verified:false' = HYPOTHESIS / not cleanly verifiable. PAT-005: unknown endpoints stay auth_type=unknown / base_url='' so the validator writes live_status='unknown' rather than guessing. Auth_type values: bearer | query | header:NAME | none | unknown.",
+    "updated": "2026-07-12",
     "vault_providers": [
       "cerebras",
+      "cerebras-key",
       "cloudflare",
       "cohere",
       "elevenlabs",
@@ -12,7 +13,32 @@
       "ocr-space",
       "openrouter",
       "pollinations"
-    ]
+    ],
+    "live_run_2026-07-12": {
+      "tool": "hunter validate-keys (built in worktree /tmp/krv-ideal-wt)",
+      "keys_probed": 33,
+      "valid": 29,
+      "expired": 2,
+      "rate_limited": 0,
+      "unknown": 2,
+      "verified_by_live": ["openrouter", "cohere", "mistral", "cerebras", "cerebras-key", "elevenlabs", "manus", "pollinations"],
+      "not_verified": {
+        "ocr-space": "probed GET /parse/imageurl?apikey=KEY -> http_400 (no image param); key reached API & auth accepted, but no /models endpoint => not a clean liveness signal. Endpoint/auth plausible, NOT cleanly verified by this validator.",
+        "cloudflare": "NOT probed (auth_type=unknown per PAT-005): requires account_id in path + validator bearer-adapter hardcodes /models, so /user/tokens/verify cannot be targeted."
+      }
+    },
+    "sources": {
+      "cerebras": "docs/endpoint-research-2026-06-25.md + docs/provider-keys-guide.md (live GET /v1/models 200, OpenAI-compatible) + live run 2026-07-12",
+      "cohere": "docs/cohere-models-audit-2026-06-24.md + docs/provider-keys-guide.md (live GET /v1/models 200) + live run 2026-07-12",
+      "mistral": "docs/mistral-integration.md + docs/mistral-models-audit-2026-06-24.md (live GET /v1/models 200) + live run 2026-07-12",
+      "openrouter": "OpenAI-compatible /v1/models + Bearer (well-known, prior runs) + live run 2026-07-12",
+      "elevenlabs": "web-verify official docs https://elevenlabs.io/docs/api-reference/models/list (GET /v1/models, header xi-api-key) + live run 2026-07-12",
+      "ocr-space": "web-verify official docs https://ocr.space/ocrapi (auth via 'apikey' query param; no /models list endpoint) + live run 2026-07-12 (http_400)",
+      "pollinations": "docs/endpoint-research-2026-06-25.md (live GET /api/models 200, no auth) + live run 2026-07-12",
+      "manus": "docs/MANUS_CANONICAL.md VERIFIED: header x-manus-api-key, GET /v2/usage.availableCredits (LIVE+DOCS) + live run 2026-07-12",
+      "cloudflare": "PAT-005 unknown: account_id templating unsupported + validator bearer-adapter hardcodes /models; cannot target /user/tokens/verify",
+      "cerebras-key": "alias of 'cerebras' (keys dropped as 'cerebras key.md'); same endpoint + live run 2026-07-12"
+    }
   },
   "providers": {
     "openrouter": {
@@ -22,25 +48,25 @@
       "method": "GET",
       "verified": true,
       "registry_name": "OpenRouter (free models)",
-      "instructions": "OpenAI-compatible /v1/models with Bearer. Confirmed endpoint."
+      "instructions": "VERIFIED by live run 2026-07-12: GET /v1/models returned 200 (valid) for the real vault key. OpenAI-compatible /v1/models + Bearer."
     },
     "cohere": {
-      "base_url": "https://api.cohere.ai/v1",
+      "base_url": "https://api.cohere.com/v1",
       "auth_type": "bearer",
       "models_path": "/models",
       "method": "GET",
-      "verified": false,
+      "verified": true,
       "registry_name": "Cohere",
-      "instructions": "HYPOTHESIS: Cohere v1 /models. Confirm actual models endpoint (Cohere v2 differs)."
+      "instructions": "VERIFIED by live run 2026-07-12: GET /v1/models returned 200 (valid) for all 4 vault keys. Cohere v1 /models + Bearer."
     },
     "mistral": {
       "base_url": "https://api.mistral.ai/v1",
       "auth_type": "bearer",
       "models_path": "/models",
       "method": "GET",
-      "verified": false,
+      "verified": true,
       "registry_name": "Mistral",
-      "instructions": "HYPOTHESIS: Mistral AI /v1/models. Confirm."
+      "instructions": "VERIFIED by live run 2026-07-12: GET /v1/models returned 200 (valid) for both vault keys. Mistral AI /v1/models + Bearer."
     },
     "cerebras": {
       "base_url": "https://api.cerebras.ai/v1",
@@ -49,52 +75,7 @@
       "method": "GET",
       "verified": true,
       "registry_name": "Cerebras",
-      "instructions": "HYPOTHESIS: Cerebras inference /v1/models. Confirm base URL."
-    },
-    "cloudflare": {
-      "base_url": "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1",
-      "auth_type": "bearer",
-      "models_path": "/models",
-      "method": "GET",
-      "verified": false,
-      "registry_name": "Cloudflare Workers AI",
-      "instructions": "HYPOTHESIS: CF Workers AI needs account_id substitution and uses /v1/models. Validator does NOT template account_id yet -> expect unknown until implemented."
-    },
-    "elevenlabs": {
-      "base_url": "https://api.elevenlabs.io/v1",
-      "auth_type": "header:xi-api-key",
-      "models_path": "/models",
-      "method": "GET",
-      "verified": false,
-      "registry_name": "unknown",
-      "instructions": "ElevenLabs v1 /models с заголовком xi-api-key (header-адаптер E2). verified:false — оператор подтверждает endpoint."
-    },
-    "ocr-space": {
-      "base_url": "https://api.ocr.space/rest/v1",
-      "auth_type": "query",
-      "models_path": "",
-      "method": "POST",
-      "verified": false,
-      "registry_name": "OCR.space",
-      "instructions": "GAP: OCR.space has no /models endpoint; auth via 'apikey' query param, not Bearer. Validator cannot probe models here -> expect unknown until a provider-specific probe is added."
-    },
-    "pollinations": {
-      "base_url": "https://text.pollinations.ai",
-      "auth_type": "none",
-      "models_path": "/models",
-      "method": "GET",
-      "verified": false,
-      "registry_name": "Pollinations",
-      "instructions": "HYPOTHESIS: Pollinations text models endpoint. Auth is open (no key). Confirm."
-    },
-    "manus": {
-      "base_url": "",
-      "auth_type": "unknown",
-      "models_path": "",
-      "method": "",
-      "verified": false,
-      "registry_name": "Manus",
-      "instructions": "UNKNOWN: Manus is not a standard LLM API with /models. Left unknown per PAT-005; needs a dedicated probe or exclusion."
+      "instructions": "VERIFIED by live run 2026-07-12: GET /v1/models returned 200 (valid) for all 5 keys in api.keys (no region/TLS block observed this run). Cerebras inference /v1/models + Bearer (OpenAI-compatible)."
     },
     "cerebras-key": {
       "base_url": "https://api.cerebras.ai/v1",
@@ -103,7 +84,52 @@
       "method": "GET",
       "verified": true,
       "registry_name": "Cerebras",
-      "instructions": "ALIAS: keys dropped as 'cerebras key.md' stored under 'cerebras-key'. Same endpoint as 'cerebras'."
+      "instructions": "ALIAS of 'cerebras' (keys stored under 'cerebras-key', dropped as 'cerebras key.md'). VERIFIED by live run 2026-07-12: GET /v1/models 200 (valid) for all 5 keys. Same endpoint as 'cerebras'."
+    },
+    "cloudflare": {
+      "base_url": "",
+      "auth_type": "unknown",
+      "models_path": "",
+      "method": "",
+      "verified": false,
+      "registry_name": "Cloudflare Workers AI",
+      "instructions": "PAT-005 unknown: Cloudflare Workers AI requires account_id in path (https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/...) AND /ai/models returns 401. The only account_id-free token check is GET /client/v4/user/tokens/verify (Bearer), but the validator's bearer-adapter hardcodes /models (=> /user/tokens/verify/models, 404) and the header-adapter sends the raw secret without the 'Bearer ' prefix. So this validator cannot cleanly probe Cloudflare -> live_status stays unknown (NOT probed in live run 2026-07-12). A dedicated CF adapter (token-verify + account_id templating) is needed."
+    },
+    "elevenlabs": {
+      "base_url": "https://api.elevenlabs.io/v1",
+      "auth_type": "header:xi-api-key",
+      "models_path": "/models",
+      "method": "GET",
+      "verified": true,
+      "registry_name": "ElevenLabs",
+      "instructions": "VERIFIED by live run 2026-07-12: GET /v1/models returned 200 (valid) for 6/7 vault keys (1 key expired). Header xi-api-key (web-verified official docs 2026-07-12)."
+    },
+    "ocr-space": {
+      "base_url": "https://api.ocr.space/parse/imageurl",
+      "auth_type": "query",
+      "models_path": "",
+      "method": "GET",
+      "verified": false,
+      "registry_name": "OCR.space",
+      "instructions": "NOT cleanly verified. Live run 2026-07-12: GET /parse/imageurl?apikey=KEY returned http_400 (missing image param). The key reached the API and auth was accepted, but OCR.space has NO /models list endpoint, so this is not a clean liveness signal. Endpoint/auth knowledge (apikey query param) is web-verified official docs, but this validator cannot confirm key validity without an image. Kept verified:false."
+    },
+    "pollinations": {
+      "base_url": "https://text.pollinations.ai",
+      "auth_type": "none",
+      "models_path": "/api/models",
+      "method": "GET",
+      "verified": true,
+      "registry_name": "Pollinations",
+      "instructions": "VERIFIED by live run 2026-07-12: GET /api/models returned 200 (valid), no auth. (docs/endpoint-research-2026-06-25 live 200.)"
+    },
+    "manus": {
+      "base_url": "https://api.manus.ai",
+      "auth_type": "header:x-manus-api-key",
+      "models_path": "/v2/usage.availableCredits",
+      "method": "GET",
+      "verified": true,
+      "registry_name": "Manus",
+      "instructions": "VERIFIED per docs/MANUS_CANONICAL.md (LIVE+DOCS 2026-07-11): auth header x-manus-api-key, GET /v2/usage.availableCredits. Live run 2026-07-12: 200 (valid) for 5/6 vault keys (1 key expired/invalid_key). Returns 200 with credits JSON for a valid key."
     }
   }
 }
