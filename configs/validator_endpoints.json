@@ -62,12 +62,12 @@
     },
     "elevenlabs": {
       "base_url": "https://api.elevenlabs.io/v1",
-      "auth_type": "bearer",
+      "auth_type": "header:xi-api-key",
       "models_path": "/models",
       "method": "GET",
       "verified": false,
       "registry_name": "unknown",
-      "instructions": "HYPOTHESIS: ElevenLabs v1. Not present in providers.json (no registry_name match). Confirm."
+      "instructions": "ElevenLabs v1 /models с заголовком xi-api-key (header-адаптер E2). verified:false — оператор подтверждает endpoint."
     },
     "ocr-space": {
       "base_url": "https://api.ocr.space/rest/v1",
