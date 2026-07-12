@@ -47,7 +47,7 @@ export function ProvidersPage({ searchQuery: headerSearch }: { searchQuery?: str
     }
 
     const statusOrder: Record<string, number> = {
-      verified: 0, confirmed: 1, claimed: 2, unverified: 3, expired: 4, deprioritized: 5,
+      verified: 0, confirmed: 1, claimed: 2, unverified: 3, expired: 4, deprioritized: 5, blocked: 6,
     }
 
     result.sort((a, b) => {
@@ -65,7 +65,7 @@ export function ProvidersPage({ searchQuery: headerSearch }: { searchQuery?: str
     return result
   }, [providers, statusFilter, ccFilter, search, sortBy, sortOrder, queueOnly])
 
-  const statuses = ['verified', 'confirmed', 'claimed', 'unverified', 'expired', 'deprioritized']
+  const statuses = ['verified', 'confirmed', 'claimed', 'unverified', 'expired', 'deprioritized', 'blocked']
 
   const handleExportJSON = () => {
     exportToJSON(filtered, 'providers')

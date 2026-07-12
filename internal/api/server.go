@@ -510,7 +510,7 @@ func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
 // validProviderStatuses — допустимые значения статуса провайдера (веб-верификация).
 var validProviderStatuses = map[string]bool{
 	"verified": true, "confirmed": true, "claimed": true,
-	"unverified": true, "expired": true, "deprioritized": true,
+	"unverified": true, "expired": true, "deprioritized": true, "blocked": true,
 }
 
 // handleSetVerdict — POST /api/v1/findings/verdict — веб-триаж находки.
