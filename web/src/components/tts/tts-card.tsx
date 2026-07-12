@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TTSProvider } from '../../api/tts';
+import type { TTSProvider } from '../../api/tts';
 
 interface Props {
   provider: TTSProvider;

@@ -1,4 +1,4 @@
-import { TTSStats } from '../../api/tts';
+import type { TTSStats } from '../../api/tts';
 
 interface Props {
   stats: TTSStats;

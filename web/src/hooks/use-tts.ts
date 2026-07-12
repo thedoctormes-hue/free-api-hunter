@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchTTSProviders, fetchTTSStats, TTSProvider, TTSStats } from '../api/tts';
+import { fetchTTSProviders, fetchTTSStats, type TTSProvider, type TTSStats } from '../api/tts';
 
 export function useTTSProviders() {
   return useQuery<TTSProvider[]>({
