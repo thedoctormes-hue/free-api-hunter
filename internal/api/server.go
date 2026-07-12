@@ -15,10 +15,22 @@ import (
 	"time"
 
 	"free-api-hunter/internal/models"
+	"free-api-hunter/internal/notify"
 	"free-api-hunter/internal/storage"
 )
 
 var logger = slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})).With("service", "api")
+
+// validVerdictsWeb — белый список вердиктов, принимаемых веб-триажем.
+// Совпадает с notify.validVerdicts (алиасы not_confirmed|not_working_rf → rejected).
+var validVerdictsWeb = map[string]bool{
+	"confirmed":      true,
+	"rejected":       true,
+	"backlog":        true,
+	"already_in_use": true,
+	"not_confirmed":  true, // alias -> rejected
+	"not_working_rf": true, // alias -> rejected
+}
 
 //scanState represents the current scan run status.
 type scanState struct {
@@ -209,6 +221,7 @@ func (s *Server) routes() {
 	s.mux.Handle("/api/v1/providers", buildHandler(s.handleProviders))
 	s.mux.Handle("/api/v1/providers/", buildHandler(s.handleProviderByID))
 	s.mux.Handle("/api/v1/findings", buildHandler(s.handleFindings))
+	s.mux.Handle("/api/v1/findings/verdict", buildHandler(s.handleSetVerdict))
 	s.mux.Handle("/api/v1/stats", buildHandler(s.handleStats))
 	// Scan history & scan trigger (protected)
 	s.mux.Handle("/api/v1/scan-history", buildHandler(s.handleScanHistory))
@@ -489,6 +502,52 @@ func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleSetVerdict — POST /api/v1/findings/verdict — веб-триаж находки.
+// Тело JSON: {"source":"<url>","verdict":"confirmed|rejected|backlog|already_in_use"}.
+// Матч по source (URL), НЕ по индексу (индекс нестабилен между ре-бриджами).
+// Переиспользует notify.TriageSet — логику не дублируем.
+func (s *Server) handleSetVerdict(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.jsonErr(w, http.StatusMethodNotAllowed, "method not allowed; only POST is supported")
+		return
+	}
+
+	var req struct {
+		Source  string `json:"source"`
+		Verdict string `json:"verdict"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.jsonErr(w, http.StatusBadRequest, fmt.Sprintf("invalid JSON body: %v", err))
+		return
+	}
+
+	if req.Source == "" || req.Verdict == "" {
+		s.jsonErr(w, http.StatusBadRequest, "source and verdict are required")
+		return
+	}
+
+	if !validVerdictsWeb[req.Verdict] {
+		s.jsonErr(w, http.StatusBadRequest, "invalid verdict (allowed: confirmed|rejected|backlog|already_in_use)")
+		return
+	}
+
+	// index=0 → TriageSet матчит по source URL.
+	if err := notify.TriageSet(s.DataDir, 0, req.Verdict, req.Source); err != nil {
+			msg := err.Error()
+			switch {
+			case strings.Contains(msg, "no pending item with source"):
+				s.jsonErr(w, http.StatusNotFound, msg)
+			case strings.Contains(msg, "invalid verdict"):
+				s.jsonErr(w, http.StatusBadRequest, msg)
+			default:
+				s.jsonErr(w, http.StatusInternalServerError, fmt.Sprintf("triage failed: %v", err))
+			}
+		return
+	}
+
+	s.json(w, http.StatusOK, response{Success: true, Meta: &meta{Version: "0.1.0"}})
+}
+
 // handleStats — GET /api/v1/stats — статистика
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -706,6 +765,7 @@ a{color:#58a6ff}
 <div class="endpoint"><span class="method">GET</span><span class="path"><a href="/api/v1/providers">/api/v1/providers</a></span><span>— Список провайдеров</span></div>
 <div class="endpoint"><span class="method">GET</span><span class="path">/api/v1/providers/{id}</span><span>— Провайдер по ID</span></div>
 <div class="endpoint"><span class="method">GET</span><span class="path"><a href="/api/v1/findings">/api/v1/findings</a></span><span>— Список находок</span></div>
+<div class="endpoint"><span class="method">POST</span><span class="path">/api/v1/findings/verdict</span><span>— Веб-триаж (вердикт по source URL)</span></div>
 <div class="endpoint"><span class="method">GET</span><span class="path"><a href="/api/v1/stats">/api/v1/stats</a></span><span>— Статистика</span></div>
 <div class="endpoint"><span class="method">GET</span><span class="path"><a href="/api/v1/scan-history">/api/v1/scan-history</a></span><span>— История сканирований</span></div>
 <div class="endpoint"><span class="method">POST</span><span class="path">/api/v1/scan</span><span>— Запустить сканирование</span></div>
@@ -715,6 +775,7 @@ a{color:#58a6ff}
 <p><code>?credit_card=false</code> — только без кредитной карты</p>
 <p><code>?source=hackernews</code> — фильтр находок по источнику</p>
 <p><code>?limit=10</code> — лимит результатов</p>
+<p><code>POST /api/v1/findings/verdict</code> — тело <code>{"source":"&lt;url&gt;","verdict":"confirmed|rejected|backlog|already_in_use"}</code></p>
 
 <h2>Пример</h2>
 <pre>curl http://localhost:8080/api/v1/providers?status=verified&credit_card=false</pre>

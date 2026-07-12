@@ -5,10 +5,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"free-api-hunter/internal/database"
 	"free-api-hunter/internal/models"
+	"free-api-hunter/internal/notify"
 	"free-api-hunter/internal/storage"
 	_ "modernc.org/sqlite"
 )
@@ -315,6 +318,107 @@ func TestIndexPage(t *testing.T) {
 	ct := w.Header().Get("Content-Type")
 	if ct != "text/html; charset=utf-8" {
 		t.Errorf("expected text/html, got %s", ct)
+	}
+}
+
+func TestSetVerdict(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupDB(t)
+	s := NewServerWithDir("127.0.0.1:0", dir)
+
+	// Seed pending_review.json with one pending item.
+	seed := notify.PendingReview{Pending: []notify.PendingItem{
+		{Provider: "", Source: "https://example.com/find1", WhyFree: "free tier", FoundAt: models.Now(), Reviewed: false, Verdict: ""},
+	}}
+	b, err := json.Marshal(seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "pending_review.json"), b, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	body := `{"source":"https://example.com/find1","verdict":"confirmed"}`
+	req := httptest.NewRequest("POST", "/api/v1/findings/verdict", strings.NewReader(body))
+	req.Header.Set("X-API-Key", "test-key")
+	w := httptest.NewRecorder()
+	s.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
+	}
+	var resp response
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if !resp.Success {
+		t.Errorf("expected success=true, got %v", resp)
+	}
+
+	// Verify the verdict was persisted via notify.TriageSet.
+	pr, err := notify.LoadPendingReview(filepath.Join(dir, "pending_review.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pr.Pending) != 1 {
+		t.Fatalf("expected 1 pending item, got %d", len(pr.Pending))
+	}
+	if !pr.Pending[0].Reviewed || pr.Pending[0].Verdict != "confirmed" {
+		t.Errorf("expected reviewed=true verdict=confirmed, got reviewed=%v verdict=%q", pr.Pending[0].Reviewed, pr.Pending[0].Verdict)
+	}
+}
+
+func TestSetVerdictBadVerdict(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupDB(t)
+	s := NewServerWithDir("127.0.0.1:0", dir)
+
+	body := `{"source":"https://example.com/find1","verdict":"bogus"}`
+	req := httptest.NewRequest("POST", "/api/v1/findings/verdict", strings.NewReader(body))
+	req.Header.Set("X-API-Key", "test-key")
+	w := httptest.NewRecorder()
+	s.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", w.Code, w.Body.String())
+	}
+	var resp response
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Success {
+		t.Errorf("expected success=false")
+	}
+}
+
+func TestSetVerdictEmptyBody(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupDB(t)
+	s := NewServerWithDir("127.0.0.1:0", dir)
+
+	body := `{"source":"","verdict":""}`
+	req := httptest.NewRequest("POST", "/api/v1/findings/verdict", strings.NewReader(body))
+	req.Header.Set("X-API-Key", "test-key")
+	w := httptest.NewRecorder()
+	s.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestSetVerdictMethodNotAllowed(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupDB(t)
+	s := NewServerWithDir("127.0.0.1:0", dir)
+
+	req := httptest.NewRequest("GET", "/api/v1/findings/verdict", nil)
+	req.Header.Set("X-API-Key", "test-key")
+	w := httptest.NewRecorder()
+	s.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d body=%s", w.Code, w.Body.String())
 	}
 }
 

@@ -1,11 +1,21 @@
 import { useState, useMemo, useDeferredValue } from 'react'
 import { useFindings } from '@/hooks/use-findings'
+import { useSetVerdict } from '@/hooks/use-findings'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatDate } from '@/lib/utils'
 import { exportToJSON, exportToCSV } from '@/lib/export'
 import { ExternalLink, Filter, Download, Search } from 'lucide-react'
+import type { Verdict } from '@/api/findings'
+
+// Вердикты веб-триажа (совпадают с notify.TriageSet).
+const VERDICTS: { value: Verdict; label: string }[] = [
+  { value: 'confirmed', label: 'Confirmed' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'backlog', label: 'Backlog' },
+  { value: 'already_in_use', label: 'In use' },
+]
 
 export function FindingsPage() {
   const [sourceFilter, setSourceFilter] = useState('')
@@ -17,6 +27,7 @@ export function FindingsPage() {
   const searchTerm = deferredSearch.toLowerCase()
 
   const { data: findings, isLoading } = useFindings()
+  const setVerdict = useSetVerdict()
 
   const filtered = useMemo(() => {
     if (!findings) return []
@@ -187,6 +198,23 @@ export function FindingsPage() {
                           <span className="text-xs text-[var(--status-expired)]">filtered: {finding.filter_reason}</span>
                         </>
                       )}
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                      <span className="text-xs text-[var(--text-muted)]">Verdict:</span>
+                      {VERDICTS.map(({ value, label }) => {
+                        const pending = setVerdict.isPending && setVerdict.variables?.source === finding.url
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            disabled={pending}
+                            onClick={() => setVerdict.mutate({ source: finding.url, verdict: value })}
+                            className="inline-flex items-center h-6 px-2 text-xs rounded-md border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {label}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                   {finding.url && (
