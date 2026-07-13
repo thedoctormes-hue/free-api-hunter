@@ -42,6 +42,27 @@ edits live in `data/free-api-hunter.db` + `data/providers.json` (both gitignored
 ## Limits (from official docs)
 - Free: 15 RPM, 20k TPM, 20k tokens/day. Tiers 1–5 by lifetime top-up ($100–$1000).
 
+## Pricing rationale (official, from /docs/models/)
+Why the same 128K context + uncensored stance still spans $0.70→$3.00 in/out:
+- **Base upstream model** is the primary cost driver: GLM family (3.0) > DeepSeek V3.2
+  (2.0/2.5) > Llama 3.1 8B (8B). Aion is a router; upstream cost passes through.
+- **Multi-model collaborative generation** for 3.0 & 3.0-mini: "multiple specialized models
+  contribute to each response" = N inferences per request. 3.0 (GLM ensemble) is priciest;
+  3.0-mini (DeepSeek ensemble) is CHEAPER than single 2.0 — proving base matters more
+  than the "multi-model" label.
+- **Reasoning**: 2.0/2.5/3.0/3.0-mini are reasoning models (hidden reasoning tokens
+  ≈2x token burn); 8B is NOT (no reasoning, no cached discount).
+- **Positioning**: 2.5 = "more natural/human-like + faster" step-up from 2.0 (justifies $1/$3);
+  8B = budget RP niche at 32K ctx, priced parity with 2.0 despite tiny size.
+- External latency does NOT track price (live probe: 3.0 fastest at 6.2s yet priciest;
+  2.5 slowest at 13.6s at mid price) — confirms cost is internal (upstream+ensemble), not
+  observable latency.
+
+## Endpoints confirmation
+- Official docs list ONLY `POST /v1/chat/completions` + `GET /v1/models`.
+  `POST /v1/responses` is ABSENT from all public Aion Labs docs/ToS → our discovery
+  of a working, undocumented Responses endpoint is corroborated.
+
 ## Context / reputation
 - `aionlabs.ai` is an LLM aggregator/router (per ToS it routes to upstream providers). Do NOT
   confuse with `aionlabs.com` (a separate pharma venture studio).
