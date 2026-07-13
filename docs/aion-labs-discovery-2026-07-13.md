@@ -120,3 +120,26 @@ Why the same 128K context + uncensored stance still spans $0.70→$3.00 in/out:
 Методологическая оговорка: `max_tokens=800` подрезал хвост у verbose-моделей (вердикт обрезан
 на 2.0 / 3.0 / 3.0-mini), тело целое. Reasoning-токены (~800 hidden) считаются в
 `completion_tokens` сверх видимого лимита, поэтому «out tok» в логах = ~800 hidden + ~800 visible.
+
+## Update 2026-07-13 (evening) — Rate limits, 5-key pool, msk-gastro integration
+
+### Official rate limits (aionlabs.ai/docs/rate-limits/, verified live)
+- Tiers by lifetime credit top-up: Free (default) / 1 (any top-up) / 2 ($100) / 3 ($250) / 4 ($500) / 5 ($1000). Tier never decreases.
+- Free tier: 15 RPM, 20,000 TPM, **20,000 tokens/day** per key.
+- Tier 1+: 50 RPM, 1,000,000 TPM, **UNLIMITED tokens/day** (scales to Tier 5: 1000 RPM, 20M TPM).
+- `GET /v1/models` is PUBLIC (no key). Auth accepts `Bearer` OR `Api-Key`.
+
+### 5-key pool (5 accounts, tested 2026-07-13)
+- Pool file: `/root/.aion_keys.json` (chmod 600), 5 keys. Live-tested each via `/v1/chat/completions` with model `aion-labs/aion-3.0-mini`.
+- Result: **2 valid (200)**, **3 rate-limited (429 "Daily token limit exceeded")** on test day.
+  - Valid: `...p1ss` (alv2_p8Tv…), `...DXak` (alv2_xCTV…).
+  - Daily-limited: `...x-o4` (alv2_0xSF5…), `...x3xc` (alv2_ScSl…, the previously-exhausted key), `...BaWc` (alv2_x3MRP… — burned by earlier benchmark/verify runs this session).
+- Implication: Free-tier daily cap is real and per-key. Effective daily capacity fluctuates (≤100k across 5 keys, often less). A pool MUST track per-key daily exhaustion, rotate, and detect UTC-day reset. If any account is topped up (Tier 1+), that key becomes effectively unlimited.
+- NOTE: one key (alv2_x3MRP…) was exhausted by this agent's earlier benchmark/verify calls (~22k tokens) — disclosed honestly.
+
+### msk-gastro-digest-bot integration
+- New module `aion_pool.py`: round-robin key acquisition + per-key daily-exhaustion tracking (UTC-day bucket). No secrets in code; keys read from `/root/.aion_keys.json` at runtime.
+- `config.py`: `AION_ENABLED`, `AION_URL`, `AION_KEYS_FILE`, `AION_MODELS` (4 reasoning models; excludes `aion-rp-llama-3.1-8b` which failed the creative benchmark), `AION_DEFAULT_MODEL = aion-labs/aion-3.0-mini`.
+- `main.py`: `generate()` gained `backend` param. Aion is PRIMARY backend (pool keys); OpenRouter `:free` is fallback. On Aion 429/401 the key is marked exhausted and the next candidate is tried.
+- Verified live: `generate()` through the pool returned a proper-voice Moscow gastro digest (model `aion-labs/aion-3.0-mini`, pt=592/ct=120). Aion reasoning models are slow (tens of seconds per full digest) — `GENERATION_TIMEOUT=180` covers it.
+- Committed on branch `antcat/restore-env-and-docs` (agent edits auto-commit in this environment).
