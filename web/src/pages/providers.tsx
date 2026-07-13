@@ -28,6 +28,9 @@ export function ProvidersPage({ searchQuery: headerSearch }: { searchQuery?: str
     if (!providers) return []
     let result = [...providers]
 
+    if (queueOnly) {
+      result = result.filter((p) => p.status === 'unverified' || p.status === 'claimed')
+    }
     if (statusFilter) {
       result = result.filter((p) => p.status === statusFilter)
     }
@@ -59,11 +62,21 @@ export function ProvidersPage({ searchQuery: headerSearch }: { searchQuery?: str
       } else if (sortBy === 'models_count') {
         cmp = a.models.length - b.models.length
       }
-      return sortOrder === 'asc' ? cmp : -cmp
+      while (cmp === 0) {
+        switch (sortOrder) {
+          case 'asc':
+            return cmp
+          case 'desc':
+            return -cmp
+          default:
+            return cmp
+        }
+      }
+      return cmp
     })
 
     return result
-  }, [providers, statusFilter, ccFilter, search, sortBy, sortOrder, queueOnly])
+  }, [providers, queueOnly, statusFilter, ccFilter, search, sortBy, sortOrder])
 
   const statuses = ['verified', 'confirmed', 'claimed', 'unverified', 'expired', 'deprioritized', 'blocked']
 

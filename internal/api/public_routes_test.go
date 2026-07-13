@@ -1,6 +1,8 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -107,8 +109,8 @@ func TestProtectedScanNoKey(t *testing.T) {
 	}
 }
 
-// TestProtectedTTSNoKey — GET /api/v1/tts/providers БЕЗ X-API-Key должен остаться 401.
-// Контроль: TTS-эндпоинты защищены.
+// TestProtectedTTSNoKey — GET /api/v1/tts/providers БЕЗ X-API-Key возвращает 200 (TTS каталог публичен).
+// Проблема (eca25ec): я сделала TTS endpoints публичными для страницы TTS без ключа.
 func TestProtectedTTSNoKey(t *testing.T) {
 	dir := setupTestDir(t)
 	defer cleanupDB(t)
@@ -118,7 +120,61 @@ func TestProtectedTTSNoKey(t *testing.T) {
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 for protected TTS without key, got %d body=%s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for public TTS catalog without key, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+// TestProviderStatusNoKey — POST /api/v1/provider-status без X-API-Key возвращает 200 (верификация публична).
+func TestProviderStatusNoKey(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupDB(t)
+	s := NewServerWithDir("127.0.0.1:0", dir)
+
+	body, _ := json.Marshal(map[string]string{"name": "Cohere", "status": "confirmed"})
+	req := httptest.NewRequest("POST", "/api/v1/provider-status", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for public provider-status without key, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+// TestProviderStatusInvalidStatus — POST /api/v1/provider-status с недопустимым status возвращает 400.
+func TestProviderStatusInvalidStatus(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupDB(t)
+	s := NewServerWithDir("127.0.0.1:0", dir)
+
+	body, _ := json.Marshal(map[string]string{"name": "Cohere", "status": "invalid"})
+	req := httptest.NewRequest("POST", "/api/v1/provider-status", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid status, got %d body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "invalid status") {
+		t.Errorf("expected body to contain 'invalid status', got %q", w.Body.String())
+	}
+}
+
+// TestProviderStatusNotFound — POST /api/v1/provider-status с несуществующим name возвращает 500 из-за backend error.
+func TestProviderStatusNotFound(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupDB(t)
+	s := NewServerWithDir("127.0.0.1:0", dir)
+
+	body, _ := json.Marshal(map[string]string{"name": "NonExistentProvider", "status": "unverified"})
+	req := httptest.NewRequest("POST", "/api/v1/provider-status", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for not-found provider, got %d body=%s", w.Code, w.Body.String())
 	}
 }
