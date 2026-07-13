@@ -14,6 +14,9 @@ This document describes the REST API endpoints provided by the Free API Hunter b
 |--------|----------|-------------|
 | `GET` | `/providers` | List all providers (LLM and TTS) |
 | `GET` | `/providers/{id}` | Get details for a specific provider |
+| `POST` | `/provider-status` | Update provider verification status (web triage). **Public** — no `X-API-Key` required. Body: `{"name": "<provider>", "status": "<verified|confirmed|claimed|unverified|expired|deprioritized|blocked>"}`. Returns `{"success": true}` on success; `400` for unknown provider name or invalid status. |
+
+> **Auth note:** read endpoints (`/providers`, `/findings`, `/stats`, `/scan-history`, `/tts/providers`, `/tts/stats`) and the verification write endpoints (`/findings/verdict`, `/provider-status`) are public. Only the mutating `/scan` trigger requires `X-API-Key`.
 
 ### Findings
 
