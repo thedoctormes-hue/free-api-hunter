@@ -325,7 +325,12 @@ func (s *Server) jsonErrWrapper(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) ListenAndServe() error {
 	logger.Info("API server starting", "addr", s.Addr)
-	handler := CORSMiddleware(RateLimitMiddleware(metricsMiddleware(s.mux)))
+	// NOTE: per-route handlers (registered in routes()) already apply
+	// CORS + RateLimit + MaxSize + Protected middleware via buildHandler.
+	// Wrapping the whole mux again with RateLimitMiddleware would re-lock the
+	// non-reentrant globalRateLimiter.mu and deadlock. So only the metrics
+	// wrapper is added here on top of s.mux.
+	handler := metricsMiddleware(s.mux)
 	return http.ListenAndServe(s.Addr, handler)
 }
 

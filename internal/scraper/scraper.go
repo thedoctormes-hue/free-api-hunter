@@ -177,6 +177,10 @@ func FetchURL(rawURL string) (string, error) {
 	return string(body), nil
 }
 
+// redditClientFactory — фабрика HTTP-клиента для Reddit.
+// По умолчанию = CreateRedditClient; переопределяется в тестах для инъекции мока.
+var redditClientFactory = CreateRedditClient
+
 // ScrapeReddit — сканировать Reddit через JSON API с обходом блокировок
 func ScrapeReddit(subreddit, query string, limit int) []models.Finding {
 	waitForRedditRateLimit()
@@ -184,8 +188,8 @@ func ScrapeReddit(subreddit, query string, limit int) []models.Finding {
 	encodedQuery := url.QueryEscape(query)
 	rawURL := fmt.Sprintf("https://www.reddit.com/r/%s/search.json?q=%s&sort=new&limit=%d", subreddit, encodedQuery, limit)
 
-	// Создаём специализированный клиент для Reddit
-	client := CreateRedditClient()
+	// Создаём специализированный клиент для Reddit (через injectable фабрику)
+	client := redditClientFactory()
 
 	// Формируем запрос с ротируемым User-Agent
 	req, err := http.NewRequest("GET", rawURL, nil)

@@ -42,7 +42,15 @@ func TestFetchURLNon200(t *testing.T) {
 }
 
 // TestScrapeRedditTimeout ensures ScrapeReddit handles unreachable servers gracefully.
+// Uses the injectable redditClientFactory pointed at a closed server (no real network).
 func TestScrapeRedditTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv.Close() // closed → connection error, no real network
+
+	orig := redditClientFactory
+	redditClientFactory = func() *http.Client { return srv.Client() }
+	defer func() { redditClientFactory = orig }()
+
 	findings := ScrapeReddit("test", "free", 2)
 	if findings != nil && len(findings) > 0 {
 		t.Logf("got %d findings (non-zero is ok if mocked)", len(findings))
