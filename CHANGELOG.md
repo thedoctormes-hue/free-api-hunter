@@ -1,8 +1,8 @@
 ---
 description: "free-api-hunter — история изменений"
 type: changelog
-last_reviewed: 2026-06-26
-last_code_change: 2026-06-26
+last_reviewed: 2026-07-14
+last_code_change: 2026-07-14
 status: active
 ---
 
@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Storage layer refactored** — `internal/storage/` now supports both JSON and SQLite backends. SQLite is the default when `internal/database` is initialized.
 - **Frontend upgraded** — React 19, Tailwind CSS 4, modern stack with @tanstack/react-query, recharts, framer-motion.
 - **Test coverage improved** — Key packages: filter 99.2%, models 100%, verifier 87.6%, vault 85.7%, storage 82.3%, orex 86.1%, alerter 92.3%, ocr 90.8%, tts 80.6%.
+- **Go test coverage to 80%+ (2026-07-14)** — `internal/api` raised 33.7% → **83.7%** and `internal/scraper` 50.3% → **89.9%** via new unit tests (`health`, `metrics`, `middleware`, `routes`, `extra`, scraper HTTP/mock) and a from-scratch real-socket E2E suite (`tests/e2e_test.go`).
 
 ### Fixed
 
@@ -44,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ParseFloat fix** — Fixed float parsing edge cases.
 - **Model ID fallback** — Added fallback for missing model_id in provider data.
 - **API key masking** — Secrets masked in all documentation and reports.
+- **ListenAndServe deadlock fixed (2026-07-14)** — `ListenAndServe()` wrapped the mux in `RateLimitMiddleware` on top of the per-route `RateLimitMiddleware` already applied in `buildHandler`. `globalRateLimiter.mu` is a non-reentrant `sync.Mutex`, so every `/api/v1/*` request deadlocked (outer lock held, inner re-lock blocked forever); `/health` worked because it bypasses `buildHandler`. `ListenAndServe` now wraps only `metricsMiddleware(s.mux`; CORS/RateLimit/MaxSize/Protected remain per-route. Production `ListenAndServeGraceful` (Handler: s.mux) was unaffected. Also renamed `scraper_test_extended.go` → `scraper_extended_test.go` (the old name was not compiled as a test, so its 10 `Test*` functions were dead code).
 
 ### Security
 
