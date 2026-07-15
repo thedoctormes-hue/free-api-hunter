@@ -222,12 +222,56 @@ def _write_settings_api_keys(provider: str, keys: list) -> None:
         return
     with open(SETTINGS) as f:
         text = f.read()
-    new_text = _set_api_keys_block(text, provider, keys)
-    if new_text != text:
+    text = _set_api_keys_block(text, provider, keys)
+    # All keys burnt -> disable the engine so an empty key pool does not
+    # trip a SearXNG load error / per-request suspension on restart.
+    if not keys:
+        text = _set_disabled(text, provider, True)
+    if text != (orig := open(SETTINGS).read()):
         tmp = SETTINGS + ".tmp"
         with open(tmp, "w") as f:
-            f.write(new_text)
+            f.write(text)
         os.replace(tmp, SETTINGS)
+
+
+def _set_disabled(text: str, provider: str, disabled: bool) -> str:
+    """Set `disabled:` inside one engine block (adds it if missing)."""
+    lines = text.splitlines(keepends=True)
+    out: list[str] = []
+    i = 0
+    n = len(lines)
+    target = f"- name: {provider}"
+    in_block = False
+    done = False
+    while i < n:
+        line = lines[i]
+        stripped = line.lstrip()
+        if not in_block:
+            if line.rstrip() == target:
+                in_block = True
+            out.append(line)
+            i += 1
+            continue
+        # inside target block
+        if stripped.startswith("- name:") and stripped != target:
+            # block ends just before this line; insert disabled here if missing
+            if not done:
+                out.append("  disabled: " + ("true\n" if disabled else "false\n"))
+                done = True
+            out.append(line)
+            i += 1
+            in_block = False
+            continue
+        if stripped.startswith("disabled:"):
+            out.append("  disabled: " + ("true\n" if disabled else "false\n"))
+            i += 1
+            done = True
+            continue
+        out.append(line)
+        i += 1
+    if in_block and not done:
+        out.append("  disabled: " + ("true\n" if disabled else "false\n"))
+    return "".join(out)
 
 
 def _set_api_keys_block(text: str, provider: str, keys: list) -> str:
@@ -307,11 +351,12 @@ def _probe(provider: str, key: str, timeout: float = HTTP_TIMEOUT) -> str:
     try:
         if provider == "tavily":
             url = "https://api.tavily.com/search"
+            # Tavily expects api_key in the JSON body (NOT an Authorization header)
             req = urllib.request.Request(
                 url,
-                data=json.dumps({"query": "health", "max_results": 1}).encode(),
-                headers={"Content-Type": "application/json",
-                         "Authorization": "Bearer " + key},
+                data=json.dumps({"api_key": key, "query": "health",
+                                 "max_results": 1}).encode(),
+                headers={"Content-Type": "application/json"},
                 method="POST",
             )
         elif provider == "firecrawl":
@@ -354,6 +399,8 @@ def _probe(provider: str, key: str, timeout: float = HTTP_TIMEOUT) -> str:
             return "402"
         if e.code in (401, 403):
             return "invalid"
+        if e.code in (429, 432):
+            return "limit"
         return "error"
     except Exception:
         return "error"
@@ -377,6 +424,10 @@ def cmd_healthcheck(apply: bool = True) -> int:
                 log(f"HEALTHCHECK: {p} key {mask(k['key'])} -> 402 SUSPENDED "
                     f"(mark burnt). ACTION: replace {p} API key.")
                 print(f"⚠ NEED TO UPDATE KEY: {p} — key {mask(k['key'])} suspended (402).")
+            elif res == "limit":
+                k["last_error"] = "limit"
+                log(f"HEALTHCHECK: {p} key {mask(k['key'])} -> QUOTA/LIMIT (429/432), temporary")
+                print(f"⚠ {p} key quota/limit (429/432) — temporary, NOT burnt.")
             elif res in ("invalid", "error"):
                 # 401/403/network: do not burn (may be transient) but note it.
                 k["last_error"] = res
