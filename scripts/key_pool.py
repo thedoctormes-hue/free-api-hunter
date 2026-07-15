@@ -382,10 +382,11 @@ def _probe(provider: str, key: str, timeout: float = HTTP_TIMEOUT) -> str:
                 method="POST",
             )
         elif provider == "olostep":
-            url = "https://api.olostep.com/v1/search"
+            # Engine uses https://api.olostep.com/v1/searches (plural) + Bearer.
+            url = "https://api.olostep.com/v1/searches"
             req = urllib.request.Request(
                 url,
-                data=json.dumps({"query": "health", "max_results": 1}).encode(),
+                data=json.dumps({"query": "health"}).encode(),
                 headers={"Content-Type": "application/json",
                          "Authorization": "Bearer " + key},
                 method="POST",
