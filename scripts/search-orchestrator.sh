@@ -162,8 +162,8 @@ search_tavily() {
             -d "{\"api_key\":\"${key}\",\"query\":\"${query}\",\"max_results\":${count},\"include_answer\":true}" \
             --max-time 30 2>/dev/null)
 
-        if echo "$response" | grep -qi '402\|"suspended"\|Payment Required\|payment_required'; then
-            log "Tavily: key $((i+1)) → 402 SUSPENDED, mark burnt + rotate"
+        if echo "$response" | grep -qi '402\|432\|"suspended"\|"quota"\|Payment Required\|payment_required\|limit'; then
+            log "Tavily: key $((i+1)) → 402/432 SUSPENDED, soft-suspend + rotate"
             key_pool_rotate tavily "$key"
             continue
         fi
@@ -214,8 +214,8 @@ search_firecrawl() {
             -d "{\"query\":\"${query}\",\"limit\":${count}}" \
             --max-time 30 2>/dev/null)
 
-        if echo "$response" | grep -qi '402\|"suspended"\|Payment Required\|payment_required'; then
-            log "Firecrawl: key $((i+1)) → 402 SUSPENDED, mark burnt + rotate"
+        if echo "$response" | grep -qi '402\|432\|"suspended"\|"quota"\|Payment Required\|payment_required\|limit'; then
+            log "Firecrawl: key $((i+1)) → 402/432 SUSPENDED, soft-suspend + rotate"
             key_pool_rotate firecrawl "$key"
             continue
         fi
@@ -267,8 +267,8 @@ search_tinyfish() {
             -H "X-API-Key: ${key}" \
             --max-time 30 2>/dev/null)
 
-        if echo "$response" | grep -qi '402\|"suspended"\|Payment Required\|payment_required'; then
-            log "TinyFish: key $((i+1)) → 402 SUSPENDED, mark burnt + rotate"
+        if echo "$response" | grep -qi '402\|432\|"suspended"\|"quota"\|Payment Required\|payment_required\|limit'; then
+            log "TinyFish: key $((i+1)) → 402/432 SUSPENDED, soft-suspend + rotate"
             key_pool_rotate tinyfish "$key"
             continue
         fi

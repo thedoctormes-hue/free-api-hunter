@@ -165,7 +165,7 @@ def cmd_next(provider: str) -> str:
     for off in range(n):
         i = (start + off) % n
         k = keys[i]
-        if k.get("status") != "burnt":
+        if k.get("status") not in ("burnt", "suspended"):
             prov["active_idx"] = (i + 1) % n
             save_pool(data)
             return k["key"]
@@ -179,7 +179,7 @@ def cmd_mark_burnt(provider: str, key: str) -> None:
     k = _find_key(prov, key)
     if k is None:
         # key not in pool yet (e.g. rotated key from a different source) — add as burnt
-        k = {"key": key, "status": "burnt", "last_error": "402",
+        k = {"key": key, "status": "burnt", "last_error": "invalid",
              "checked_at": None, "burnt_at": _now()}
         prov["keys"].append(k)
         log(f"mark_burnt {provider}: key {mask(key)} not in pool, added as burnt")
@@ -188,16 +188,43 @@ def cmd_mark_burnt(provider: str, key: str) -> None:
             log(f"mark_burnt {provider}: key {mask(key)} already burnt")
         else:
             k["status"] = "burnt"
-            k["last_error"] = "402"
+            k["last_error"] = "invalid"
             k["burnt_at"] = _now()
-            log(f"mark_burnt {provider}: key {mask(key)} -> burnt")
+            log(f"mark_burnt {provider}: key {mask(key)} -> burnt (fatal)")
     save_pool(data)
     sync_consumers(data, provider)
 
 
+def cmd_suspend(provider: str, key: str) -> str:
+    """Mark key SUSPENDED (temporary: 402 credits / 429-432 quota), sync, and
+    return the NEXT active key for immediate retry. Suspended keys are still
+    probed by the healthcheck prober and auto-recover to 'active' on HTTP 200,
+    unlike 'burnt' (fatal, e.g. 401/403 invalid key)."""
+    data = load_pool()
+    prov = data["providers"][provider]
+    k = _find_key(prov, key)
+    if k is None:
+        k = {"key": key, "status": "suspended", "last_error": "suspended",
+             "checked_at": None, "burnt_at": None}
+        prov["keys"].append(k)
+        log(f"suspend {provider}: key {mask(key)} not in pool, added as suspended")
+    else:
+        if k.get("status") == "burnt":
+            log(f"suspend {provider}: key {mask(key)} already burnt, leaving burnt")
+        else:
+            k["status"] = "suspended"
+            k["last_error"] = "suspended"
+            log(f"suspend {provider}: key {mask(key)} -> suspended (temporary)")
+    save_pool(data)
+    sync_consumers(data, provider)
+    return cmd_next(provider)
+
+
 def cmd_rotate_on_error(provider: str, key: str) -> str:
-    """Mark key burnt, sync, and return the NEXT active key for immediate retry."""
-    cmd_mark_burnt(provider, key)
+    """Runtime error on a key: SOFT-suspend it (not burn), sync, return NEXT
+    active key for immediate retry. 402/429/432 are temporary and auto-recover;
+    only 401/403 (invalid) is marked burnt by the healthcheck prober."""
+    cmd_suspend(provider, key)
     return cmd_next(provider)
 
 
@@ -210,7 +237,7 @@ def sync_consumers(data: dict, provider: Optional[str] = None) -> None:
     providers = [provider] if provider else PROVIDERS
     for p in providers:
         active = [k["key"] for k in data["providers"][p]["keys"]
-                  if k.get("status") != "burnt" and k.get("key")]
+                  if k.get("status") not in ("burnt", "suspended") and k.get("key")]
         _write_settings_api_keys(p, active)
         _write_search_keys(p, active)
         _write_legacy_index(p)
@@ -418,21 +445,26 @@ def cmd_healthcheck(apply: bool = True) -> int:
             res = _probe(p, k["key"])
             k["checked_at"] = _now()
             if res == "402":
-                k["status"] = "burnt"
+                k["status"] = "suspended"
                 k["last_error"] = "402"
+                alerts += 1
+                log(f"HEALTHCHECK: {p} key {mask(k['key'])} -> 402 (credits), SUSPENDED "
+                    f"(temporary, auto-recovers on top-up).")
+                print(f"⚠ {p} key credits exhausted (402) — suspended, auto-recovers on top-up.")
+            elif res == "limit":
+                k["status"] = "suspended"
+                k["last_error"] = "limit"
+                alerts += 1
+                log(f"HEALTHCHECK: {p} key {mask(k['key'])} -> QUOTA/LIMIT (429/432), SUSPENDED (temporary)")
+                print(f"⚠ {p} key quota/limit (429/432) — suspended, auto-recovers on reset.")
+            elif res in ("invalid", "error"):
+                # 401/403 (invalid key) / network: FATAL -> burnt, prober stops probing.
+                k["status"] = "burnt"
+                k["last_error"] = res
                 k["burnt_at"] = _now()
                 alerts += 1
-                log(f"HEALTHCHECK: {p} key {mask(k['key'])} -> 402 SUSPENDED "
-                    f"(mark burnt). ACTION: replace {p} API key.")
-                print(f"⚠ NEED TO UPDATE KEY: {p} — key {mask(k['key'])} suspended (402).")
-            elif res == "limit":
-                k["last_error"] = "limit"
-                log(f"HEALTHCHECK: {p} key {mask(k['key'])} -> QUOTA/LIMIT (429/432), temporary")
-                print(f"⚠ {p} key quota/limit (429/432) — temporary, NOT burnt.")
-            elif res in ("invalid", "error"):
-                # 401/403/network: do not burn (may be transient) but note it.
-                k["last_error"] = res
-                log(f"HEALTHCHECK: {p} key {mask(k['key'])} -> {res} (not burnt)")
+                log(f"HEALTHCHECK: {p} key {mask(k['key'])} -> {res} (burnt, likely invalid key)")
+                print(f"⚠ NEED TO UPDATE KEY: {p} — key {mask(k['key'])} invalid ({res}), burnt.")
             else:
                 k["status"] = "active"
                 k["last_error"] = None
@@ -440,7 +472,7 @@ def cmd_healthcheck(apply: bool = True) -> int:
         save_pool(data)
         sync_consumers(data)
         if alerts:
-            log(f"HEALTHCHECK done: {alerts} key(s) marked burnt, consumers synced.")
+            log(f"HEALTHCHECK done: {alerts} key(s) flagged (burnt/suspended), consumers synced.")
     else:
         log("HEALTHCHECK dry-run: changes not applied.")
     return alerts
@@ -451,12 +483,38 @@ def status_text(data: dict) -> str:
     lines = ["key_pool status:"]
     for p in PROVIDERS:
         prov = data["providers"][p]
-        active = [k for k in prov["keys"] if k.get("status") != "burnt"]
+        active = [k for k in prov["keys"] if k.get("status") == "active"]
+        suspended = [k for k in prov["keys"] if k.get("status") == "suspended"]
         burnt = [k for k in prov["keys"] if k.get("status") == "burnt"]
-        lines.append(f"  {p}: {len(active)} active / {len(burnt)} burnt")
+        lines.append(f"  {p}: {len(active)} active / {len(suspended)} suspended / {len(burnt)} burnt")
+        for k in suspended:
+            lines.append(f"      suspended {mask(k['key'])} ({k.get('last_error','?')})")
         for k in burnt:
             lines.append(f"      burnt {mask(k['key'])} ({k.get('burnt_at','?')})")
     return "\n".join(lines)
+
+
+def cmd_recover(provider: Optional[str] = None) -> int:
+    """Reset 'burnt' keys back to 'suspended' so the prober re-probes them.
+    Used after a key is topped-up / replaced, or to undo a false burn."""
+    data = load_pool()
+    providers = [provider] if provider else PROVIDERS
+    n = 0
+    for p in providers:
+        for k in data["providers"][p]["keys"]:
+            if k.get("status") == "burnt":
+                k["status"] = "suspended"
+                k["last_error"] = "recovered"
+                k["burnt_at"] = None
+                n += 1
+                log(f"recover: {p} key {mask(k['key'])} burnt -> suspended")
+    if n:
+        save_pool(data)
+        sync_consumers(data, provider)
+        print(f"recovered {n} key(s) -> suspended (prober will re-probe)")
+    else:
+        print("nothing to recover")
+    return 0
 
 
 def cmd_status() -> None:
@@ -483,43 +541,57 @@ def cmd_self_test() -> int:
         f.write("engines:\n- name: tavily\n  api_keys:\n")
     with open(SEARCH_KEYS, "w") as f:
         f.write("providers:\n  tavily: []")
-    # Mock probe: keys ending in '-dead' => 402, else ok.
+    # Mock probe: -dead => 402, -inv => invalid(401/403), -lim => limit(429/432), else ok.
     def fake_probe(provider, key, timeout=HTTP_TIMEOUT):
-        return "402" if key.endswith("-dead") else "ok"
-    saved = _probe
+        if key.endswith("-dead"):
+            return "402"
+        if key.endswith("-inv"):
+            return "invalid"
+        if key.endswith("-lim"):
+            return "limit"
+        return "ok"
     _probe = fake_probe
     try:
         data = load_pool()
         data["providers"]["tavily"]["keys"] = [
-            {"key": "tvly-good1", "status": "active"},
+            {"key": "tvly-good", "status": "active"},
             {"key": "tvly-dead", "status": "active"},
-            {"key": "tvly-good2", "status": "active"},
+            {"key": "tvly-inv", "status": "active"},
+            {"key": "tvly-lim", "status": "active"},
         ]
         save_pool(data)
-        # a 402 on tvly-dead would burn it (simulating runtime rotate_on_error)
-        cmd_mark_burnt("tavily", "tvly-dead")
-        # next should skip burnt and return good keys only
-        first = cmd_next("tavily")
-        assert first == "tvly-good1", f"next1={first}"
-        second = cmd_next("tavily")
-        assert second == "tvly-good2", f"next2={second}"
-        # rotate_on_error on good1 -> mark burnt, return remaining active (good2)
-        nxt = cmd_rotate_on_error("tavily", "tvly-good1")
-        assert nxt == "tvly-good2", f"rotate={nxt}"
-        d2 = load_pool()
-        g1 = [k for k in d2["providers"]["tavily"]["keys"] if k["key"] == "tvly-good1"][0]
-        dead = [k for k in d2["providers"]["tavily"]["keys"] if k["key"] == "tvly-dead"][0]
-        assert g1["status"] == "burnt", "good1 not burnt"
-        assert dead["status"] == "burnt", "dead not burnt"
-        # healthcheck should keep good2 active and keep burnt keys burnt
+        # runtime 402 on tvly-dead -> SOFT suspend (NOT burnt)
+        cmd_rotate_on_error("tavily", "tvly-dead")
+        d = load_pool()
+        dead = [k for k in d["providers"]["tavily"]["keys"] if k["key"] == "tvly-dead"][0]
+        assert dead["status"] == "suspended", "402 should suspend, not burn"
+        # healthcheck: 402->suspended, limit->suspended, invalid->burnt, ok->active
         cmd_healthcheck(apply=True)
-        d3 = load_pool()
-        assert all(k["status"] == "burnt" for k in d3["providers"]["tavily"]["keys"]
-                   if k["key"] in ("tvly-dead", "tvly-good1")), "healthcheck did not keep burnt"
-        g2 = [k for k in d3["providers"]["tavily"]["keys"] if k["key"] == "tvly-good2"][0]
-        assert g2["status"] == "active", "good2 should stay active"
+        d = load_pool()
+        keys = {k["key"]: k for k in d["providers"]["tavily"]["keys"]}
+        assert keys["tvly-dead"]["status"] == "suspended", "dead not suspended"
+        assert keys["tvly-lim"]["status"] == "suspended", "limit not suspended"
+        assert keys["tvly-inv"]["status"] == "burnt", "invalid not burnt"
+        assert keys["tvly-good"]["status"] == "active", "good not active"
+        # next must skip both suspended and burnt
+        seen = set()
+        for _ in range(8):
+            nxt = cmd_next("tavily")
+            if not nxt:
+                break
+            seen.add(nxt)
+        assert seen == {"tvly-good"}, f"next leaked suspended/burnt: {seen}"
+        # recover resets burnt -> suspended (re-probable)
+        cmd_recover("tavily")
+        d = load_pool()
+        inv = [k for k in d["providers"]["tavily"]["keys"] if k["key"] == "tvly-inv"][0]
+        assert inv["status"] == "suspended", "recover did not reset burnt"
+        # sync_consumers must EXCLUDE suspended from settings.yml active list
+        active = [k["key"] for k in d["providers"]["tavily"]["keys"]
+                  if k.get("status") not in ("burnt", "suspended")]
+        assert active == ["tvly-good"], f"suspended leaked to active: {active}"
         # status text masks keys
-        assert "tvly-g" not in status_text(d3), "key leaked in status"
+        assert "tvly-good" not in status_text(d), "key leaked in status"
         print("self-test: ALL PASSED")
         return 0
     finally:
@@ -560,6 +632,8 @@ def main(argv: list) -> int:
     if cmd == "status":
         cmd_status()
         return 0
+    if cmd == "recover":
+        return cmd_recover(argv[1] if len(argv) > 1 else None)
     if cmd == "self-test":
         return cmd_self_test()
     print(f"unknown command: {cmd}")

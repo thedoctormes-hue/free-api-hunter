@@ -92,3 +92,4 @@ searxng/engines/__pycache__/
 # key pool (secrets + runtime state, managed by key_pool.py)
 configs/key_pool.json
 configs/key_pool.json.tmp
+data/rejected.json
