@@ -1,0 +1,10 @@
+[Unit]
+Description=Free API Hunter — key pool healthcheck prober
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/root/LabDoctorM/projects/free-api-hunter/scripts/key_pool_healthcheck.sh
+# Non-blocking: never fails the unit on a single probe error.
+SuccessExitStatus=0

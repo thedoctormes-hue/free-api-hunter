@@ -109,26 +109,37 @@ PY
 # Каждый вызов возвращает СЛЕДУЮЩИЙ ключ по кругу.
 # State хранится в config/.key-index-{provider}
 
+# ─── Key Pool integration (sprint-3) ───────────────────────────
+# Delegate key selection to the canonical pool manager (key_pool.py),
+# which skips 'burnt' keys and rotates to the next valid one. Falls back
+# to the legacy cyclic logic if the manager is unavailable.
+key_pool_rotate() {
+    local provider="$1" key="$2"
+    local kp="$(cd "$(dirname "$0")" && pwd)/key_pool.py"
+    [[ -x "$kp" ]] && python3 "$kp" rotate_on_error "$provider" "$key" >/dev/null 2>&1
+}
+
 get_next_key() {
     local provider="$1"
-    local state_file
-    state_file="$(cd "$(dirname "$0")" && pwd)/../config/.key-index-${provider}"
-
+    local kp="$(cd "$(dirname "$0")" && pwd)/key_pool.py"
+    if [[ -x "$kp" ]]; then
+        local key
+        key=$(python3 "$kp" next "$provider" 2>/dev/null)
+        if [[ -n "$key" ]]; then
+            echo "$key"
+            return 0
+        fi
+    fi
+    # Fallback: legacy cyclic logic
+    local state_file="$(cd "$(dirname "$0")" && pwd)/../config/.key-index-${provider}"
     local idx=0
     [[ -f "$state_file" ]] && idx=$(cat "$state_file" 2>/dev/null || echo 0)
-
     local keys
     keys=$(grep "^  ${provider}:" -A 6 "$CONFIG_FILE" 2>/dev/null | grep "^    - " | sed 's/^    - //')
-    local total
-    total=$(echo "$keys" | wc -l)
-
-    local key
-    key=$(echo "$keys" | sed -n "$((idx + 1))p")
-
-    # Advance to next (cyclic)
+    local total; total=$(echo "$keys" | wc -l)
+    local key; key=$(echo "$keys" | sed -n "$((idx + 1))p")
     idx=$(( (idx + 1) % total ))
     echo "$idx" > "$state_file"
-
     echo "$key"
 }
 
@@ -151,6 +162,11 @@ search_tavily() {
             -d "{\"api_key\":\"${key}\",\"query\":\"${query}\",\"max_results\":${count},\"include_answer\":true}" \
             --max-time 30 2>/dev/null)
 
+        if echo "$response" | grep -qi '402\|"suspended"\|Payment Required\|payment_required'; then
+            log "Tavily: key $((i+1)) → 402 SUSPENDED, mark burnt + rotate"
+            key_pool_rotate tavily "$key"
+            continue
+        fi
         if echo "$response" | grep -q '"status":429\|"code":429\|rate.limit\|Unauthorized\|"code":"401"\|"code":"403"'; then
             log "Tavily: key $((i+1)) → 401/429 (temp ban), backoff 2s"
             banned=1
@@ -198,6 +214,11 @@ search_firecrawl() {
             -d "{\"query\":\"${query}\",\"limit\":${count}}" \
             --max-time 30 2>/dev/null)
 
+        if echo "$response" | grep -qi '402\|"suspended"\|Payment Required\|payment_required'; then
+            log "Firecrawl: key $((i+1)) → 402 SUSPENDED, mark burnt + rotate"
+            key_pool_rotate firecrawl "$key"
+            continue
+        fi
         if echo "$response" | grep -q '"status":429\|"code":429\|rate.limit\|Unauthorized\|"code":"401"\|"code":"403"'; then
             log "Firecrawl: key $((i+1)) → 401/429 (temp ban), backoff 2s"
             banned=1
@@ -246,6 +267,11 @@ search_tinyfish() {
             -H "X-API-Key: ${key}" \
             --max-time 30 2>/dev/null)
 
+        if echo "$response" | grep -qi '402\|"suspended"\|Payment Required\|payment_required'; then
+            log "TinyFish: key $((i+1)) → 402 SUSPENDED, mark burnt + rotate"
+            key_pool_rotate tinyfish "$key"
+            continue
+        fi
         if echo "$response" | grep -q '"code":"MISSING_API_KEY"\|"error"\|429\|Unauthorized\|"code":"401"\|"code":"403"'; then
             log "TinyFish: key $((i+1)) → 401/429 (temp ban), backoff 2s"
             banned=1

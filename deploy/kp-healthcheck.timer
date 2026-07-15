@@ -1,0 +1,12 @@
+[Unit]
+Description=Free API Hunter — hourly key pool healthcheck
+Documentation=configs/key_pool.json
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=300
+Unit=kp-healthcheck.service
+
+[Install]
+WantedBy=timers.target
