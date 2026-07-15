@@ -675,7 +675,10 @@ except Exception:
         ;;
     verify)
         log "Route: verify → Tavily × SearXNG cross-check"
-        verify_research "$QUERY" "$COUNT" "${4:-2}"
+        OUT=$(verify_research "$QUERY" "$COUNT" "${4:-2}")
+        # Bridge: push VERIFIED answers into semantic memory (hard gate inside writer)
+        echo "$OUT" | QUERY="$QUERY" ALM_BRIDGE_WORKSPACE="${ALM_BRIDGE_WORKSPACE:-raven-search-bridge}" python3 "$LIB/write_to_alm.py" || true
+        echo "$OUT"
         ;;
     deep_research)
         log "Route: deep_research → ALL providers + decomposition"
