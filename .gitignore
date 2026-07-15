@@ -88,3 +88,7 @@ configs/.provider-stats.json
 searxng/settings.yml
 searxng/engines/__pycache__/
 /bin/
+
+# key pool (secrets + runtime state, managed by key_pool.py)
+configs/key_pool.json
+configs/key_pool.json.tmp

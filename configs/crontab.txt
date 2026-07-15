@@ -6,3 +6,6 @@
 #
 # Ежедневный отчёт в 09:00 UTC
 0 9 * * * cd /opt/free-api-hunter && ./bin/hunter --no-alerts --limit 20 >> /var/log/free-api-hunter/report.log 2>&1
+
+# Hourly key-pool healthcheck (probes paid keys, marks 402 burnt)
+0 * * * * cd /opt/free-api-hunter && ./scripts/key_pool_healthcheck.sh >> /var/log/free-api-hunter/key_pool.log 2>&1
