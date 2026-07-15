@@ -276,14 +276,22 @@ search_tinyfish() {
 
 search_searxng() {
     local query="$1"
+    # O3: профили поиска (deep research vs fast) = categories в едином инстансе SearXNG.
+    # Явный аргумент > env SEARCH_CATEGORIES (выставляется скиллом) > general.
+    # Default=general => не ломает текущий пайплайн.
+    local categories="${2:-${SEARCH_CATEGORIES:-general}}"
 
-    log "SearXNG: querying local instance"
+    log "SearXNG: querying local instance (categories=${categories})"
 
     local encoded_query
     encoded_query=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$query" 2>/dev/null)
     [ -z "$encoded_query" ] && encoded_query="$query"
 
-    curl -s "http://localhost:8889/search?q=${encoded_query}&format=json&categories=general" \
+    local enc_cat
+    enc_cat=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$categories" 2>/dev/null)
+    [ -z "$enc_cat" ] && enc_cat="$categories"
+
+    curl -s "http://localhost:8889/search?q=${encoded_query}&format=json&categories=${enc_cat}" \
         --max-time 15 2>/dev/null
 }
 
@@ -493,13 +501,20 @@ verify_research() {
     local tvf; tvf=$(mktemp); printf '%s' "$tj" > "$tvf"
     local svf; svf=$(mktemp); printf '%s' "$fj" > "$svf"
     python3 - "$tvf" "$svf" "$threshold" <<'PY'
-import sys, json, os
+import sys, json, re
 tvf, svf = sys.argv[1], sys.argv[2]
 try:
     thr = int(sys.argv[3])
 except Exception:
     thr = 2
+GND_THRESH = 0.6  # O1: доля ключевых терминов answer, найденных в текстах источников
+STOP = set(("a an the of to in for and or is are was were be been being this that with on at "
+            "by from as it its their our your his her they we you he she not no but if then than "
+            "into over under between about which what who how why when where can could should would "
+            "may might must do does did has have had will shall also via using used use new").split())
+
 tj_raw = open(tvf).read(); fj_raw = open(svf).read()
+
 def urls(blob):
     try:
         x=json.loads(blob)
@@ -508,23 +523,79 @@ def urls(blob):
     if isinstance(x,dict) and "results" in x:
         return [r.get("url","") for r in x.get("results",[]) if r.get("url")]
     return []
+
+def src_texts(blob):
+    try:
+        x=json.loads(blob)
+    except Exception:
+        return ""
+    out=[]
+    items=[]
+    if isinstance(x,dict):
+        if isinstance(x.get("results"),list): items=x["results"]
+        elif isinstance(x.get("data"),list): items=x["data"]
+    for it in items:
+        if isinstance(it,dict):
+            out.append(str(it.get("content") or it.get("snippet") or it.get("description") or ""))
+    return " ".join(out)
+
+def extract_claims(text):
+    if not text: return set()
+    toks=re.findall(r"[A-Za-z0-9][A-Za-z0-9\.\-]{2,}", text.lower())
+    claims=set()
+    for t in toks:
+        if t in STOP: continue
+        if re.fullmatch(r"\d+(\.\d+)?", t): claims.add(t)
+        elif len(t)>=4: claims.add(t)
+    return claims
+
+def grounding(answer, sources):
+    claims=extract_claims(answer)
+    if not claims: return None
+    hit=0
+    low=(sources or "").lower()
+    for c in claims:
+        if re.search(r"(?<![\\w])"+re.escape(c)+r"(?![\\w])", low):
+            hit+=1
+    return round(hit/len(claims),3)
+
 t=urls(tj_raw); s=urls(fj_raw)
 t_avail=len(t)>0; s_avail=len(s)>0
 inter=set(t)&set(s); overlap=len(inter)
-if t_avail and s_avail:
-    verified=overlap>=max(1,thr-1)
-    status=("verified" if verified else "unverified_synthesis")
-    err=None
-elif not t_avail and not s_avail:
-    verified=False; status="both_sources_unavailable"; err="both_sources_unavailable"
-elif not t_avail:
-    verified=False; status="tavily_unavailable"; err="tavily_unavailable_or_invalid"
+src = src_texts(tj_raw) + " " + src_texts(fj_raw)
+
+# O3: если выжил хотя бы один источник — отдаём живые данные, а не пустоту
+if t_avail:
+    base_raw = tj_raw
+elif s_avail:
+    base_raw = fj_raw
 else:
-    verified=False; status="searxng_unavailable"; err="searxng_unavailable"
+    base_raw = ""
 try:
-    d=json.loads(tj_raw) if tj_raw.strip() else {}
+    d=json.loads(base_raw) if base_raw.strip() else {}
 except Exception:
     d={}
+answer_text = d.get("answer","") if isinstance(d,dict) else ""
+
+url_overlap_verified = False
+gnd = None
+status = "both_sources_unavailable"
+err = None
+if t_avail and s_avail:
+    url_overlap_verified = overlap >= thr   # O2: честный порог (убран баг max(1,thr-1))
+    gnd = grounding(answer_text, src) if answer_text else None
+    if url_overlap_verified and (gnd is None or gnd >= GND_THRESH):
+        status="verified"
+    elif url_overlap_verified and gnd is not None and gnd < GND_THRESH:
+        status="answer_ungrounded"   # O1: дешёвый аналог answer_contradicts_sources
+    else:
+        status="unverified_synthesis"
+elif t_avail or s_avail:
+    url_overlap_verified=False
+    status="single_source_unverified"   # O3: один провайдер упал, второй жив
+else:
+    url_overlap_verified=False; status="both_sources_unavailable"; err="both_sources_unavailable"
+
 if err:
     d["error"]=err
 d.setdefault("_meta",{})
@@ -533,10 +604,12 @@ d["_meta"]["verification"]={
   "tavily_urls":len(t),"searxng_urls":len(s),
   "tavily_available":t_avail,"searxng_available":s_avail,
   "overlapping_urls":sorted(inter),"overlap_count":overlap,
-  "threshold":thr,"verified":verified,
+  "threshold":thr,
+  "url_overlap_verified":url_overlap_verified,
+  "answer_grounding":gnd,
   "answer_status":status
 }
-if not verified and "answer" in d:
+if status != "verified" and "answer" in d:
     d["answer"]="["+status.upper()+"] "+str(d["answer"])
 print(json.dumps(d, ensure_ascii=False))
 PY

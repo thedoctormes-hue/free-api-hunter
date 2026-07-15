@@ -8,6 +8,7 @@ import sys
 import re
 import os
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 NOW = datetime.now(timezone.utc)
 
@@ -22,6 +23,65 @@ def normalize_url(u):
     u = u.split('?')[0]
     u = u.rstrip('/')
     return u.lower()
+
+
+def host_of(url):
+    if not url:
+        return ""
+    try:
+        return urlparse(url).netloc.lower()
+    except Exception:
+        return ""
+
+
+_POLICY_CACHE = None
+
+
+def load_domain_policy():
+    """Загрузить configs/domain_policy.json (O4). Graceful: нет файла -> None."""
+    global _POLICY_CACHE
+    if _POLICY_CACHE is not None:
+        return _POLICY_CACHE
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         '..', '..', 'configs', 'domain_policy.json')
+    try:
+        with open(path) as fh:
+            p = json.load(fh)
+    except Exception:
+        p = None
+    _POLICY_CACHE = p
+    return p
+
+
+def _match(host, pat):
+    if not pat:
+        return False
+    pat = pat.lower()
+    if pat.startswith('*.'):
+        return host == pat[2:] or host.endswith('.' + pat[2:])
+    if pat.endswith('.*'):
+        return host.startswith(pat[:-2] + '.')
+    return host == pat
+
+
+def domain_score(host, policy):
+    """O4: +балл за promote, -балл за demote, block -> сильный штраф. Нет политики -> 0."""
+    if not host or not policy:
+        return 0.0
+    scores = policy.get('scores', {}) or {}
+    promo = float(scores.get('promote', 0.0))
+    demo = float(scores.get('demote', 0.0))
+    blk = float(scores.get('block', -1.0))
+    for pat in (policy.get('block', []) or []):
+        if _match(host, pat):
+            return blk
+    for pat in (policy.get('promote', []) or []):
+        if _match(host, pat):
+            return promo
+    for pat in (policy.get('demote', []) or []):
+        if _match(host, pat):
+            return demo
+    return 0.0
 
 
 def extract_date(text):
@@ -117,12 +177,17 @@ def merge_results(providers_dict):
             seen[key] = r
             merged.append(r)
     add_freshness(merged)
+    policy = load_domain_policy()
     for r in merged:
         f = r.get('_meta', {}).get('freshness_score')
         f = f if f is not None else 0.5
         pc = r.get('provider_count', 1)
-        r['_confidence'] = round(min(1.0, 0.4 + 0.2 * (pc - 1) + 0.4 * f), 3)
+        dp = domain_score(host_of(r.get('url', '')), policy)
+        r['_domain_priority'] = dp
+        conf = 0.4 + 0.2 * (pc - 1) + 0.4 * f + dp
+        r['_confidence'] = round(min(1.0, max(0.0, conf)), 3)
     merged.sort(key=lambda x: (x.get('provider_count', 1),
+                                x.get('_domain_priority', 0),
                                 x.get('_meta', {}).get('freshness_score') or 0),
                 reverse=True)
     return merged
@@ -241,11 +306,19 @@ def main():
                 seen[key] = r
                 merged.append(r)
         add_freshness(merged)
+        policy = load_domain_policy()
         for r in merged:
             f = r.get('_meta', {}).get('freshness_score')
             f = f if f is not None else 0.5
-            r['_confidence'] = round(min(1.0, 0.4 + 0.2 * (r.get('provider_count', 1) - 1) + 0.4 * f), 3)
-        merged.sort(key=lambda x: (x.get('provider_count', 1), x.get('_meta', {}).get('freshness_score') or 0), reverse=True)
+            pc = r.get('provider_count', 1)
+            dp = domain_score(host_of(r.get('url', '')), policy)
+            r['_domain_priority'] = dp
+            conf = 0.4 + 0.2 * (pc - 1) + 0.4 * f + dp
+            r['_confidence'] = round(min(1.0, max(0.0, conf)), 3)
+        merged.sort(key=lambda x: (x.get('provider_count', 1),
+                                    x.get('_domain_priority', 0),
+                                    x.get('_meta', {}).get('freshness_score') or 0),
+                    reverse=True)
         d['results'] = merged
         d.setdefault('_meta', {})
         d['_meta']['merged_count'] = len(merged)

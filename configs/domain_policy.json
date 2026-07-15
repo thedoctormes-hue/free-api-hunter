@@ -1,0 +1,39 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "updated": "2026-07-15",
+    "updated_by": "raven",
+    "description": "Политика приоритета доменов для research-выдачи (O4). promote — бонус, demote — штраф, block — сильный штраф (по умолчанию пуст, чтобы не удалять результаты агентов). wildcard: '*.' = субдомен, 'x.*' = префикс-домен."
+  },
+  "promote": [
+    "github.com",
+    "*.github.io",
+    "readthedocs.io",
+    "*.readthedocs.io",
+    "developer.mozilla.org",
+    "arxiv.org",
+    "docs.python.org",
+    "pkg.go.dev",
+    "npmjs.com",
+    "pypi.org",
+    "stackoverflow.com",
+    "developer.*",
+    "docs.*",
+    "*.dev"
+  ],
+  "demote": [
+    "medium.com",
+    "substack.com",
+    "linkedin.com",
+    "facebook.com",
+    "tiktok.com",
+    "quora.com",
+    "pinterest.com"
+  ],
+  "block": [],
+  "scores": {
+    "promote": 0.25,
+    "demote": -0.25,
+    "block": -1.0
+  }
+}
