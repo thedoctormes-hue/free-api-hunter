@@ -25,12 +25,16 @@ services:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
     restart: unless-stopped
     healthcheck:
-      # NOTE: the SearXNG image has no `curl`; use python3 (present in the image).
-      # Probe a SPECIFIC working engine (yandex, no API key) and require >0
-      # results. Using `engines=yandex` (not `categories=general`) avoids being
-      # masked by wikipedia/wikidata answers that would hide a truly blind web
-      # search. A blind/empty general search flips the container to UNHEALTHY.
-      test: ["CMD", "python3", "-c", "import json,sys,urllib.request; d=json.load(urllib.request.urlopen('http://localhost:8080/search?q=health&format=json&engines=yandex', timeout=8)); sys.exit(0 if len(d.get('results',[]))>0 else 1)"]
+      # Preserves BOTH branch intents (merged 2026-07-16, Сова/ЗавЛаб):
+      #  - main: probe a SPECIFIC working engine (yandex, no API key). Using
+      #    `engines=yandex` (not `categories=general`) avoids being masked by
+      #    wikipedia/wikidata answers that would hide a truly blind web search.
+      #  - raven/search-memory-bridge: catch "silent blindness" — HTTP 200 may be
+      #    returned with an empty results list (all general engines blocked/
+      #    disabled). Require >0 results so a blind search flips UNHEALTHY.
+      # The check probes BOTH yandex (targeted) and general (broad) and is
+      # healthy if EITHER returns >0 results.
+      test: ["CMD", "python3", "-c", "import json,sys,urllib.request; ok=lambda u: len(json.loads(urllib.request.urlopen(u,timeout=8).read()).get('results',[]))>0; sys.exit(0 if (ok('http://localhost:8080/search?q=health&format=json&engines=yandex') or ok('http://localhost:8080/search?q=health&format=json&categories=general')) else 1)"]
       interval: 60s
       timeout: 10s
       retries: 3

@@ -31,6 +31,8 @@ log "QUERY='$QUERY' TYPE='$TYPE' COUNT='$COUNT'"
 
 # ─── Processing library + cache + adaptive routing ─────────────
 LIB="$(cd "$(dirname "$0")" && pwd)/lib/process.py"
+# Directory holding the lib/*.py modules (process.py, write_to_bridge_store.py).
+LIB_DIR="$(cd "$(dirname "$0")" && pwd)/lib"
 
 # Кэш результатов (файловый, по mtime-age)
 CACHE_DIR="$(cd "$(dirname "$0")" && pwd)/../data/cache"
@@ -675,7 +677,11 @@ except Exception:
         ;;
     verify)
         log "Route: verify → Tavily × SearXNG cross-check"
-        verify_research "$QUERY" "$COUNT" "${4:-2}"
+        OUT=$(verify_research "$QUERY" "$COUNT" "${4:-2}")
+        # Bridge: persist VERIFIED answers into RAVEN'S OWN store (no shared/legacy
+        # ALM writes - RUL-009 / INC-2026-07-16-000300). Hard gate inside writer.
+        echo "$OUT" | QUERY="$QUERY" BRIDGE_STORE_DIR="${BRIDGE_STORE_DIR:-$LIB_DIR/../data/verified-insights}" python3 "$LIB_DIR/write_to_bridge_store.py" || true
+        echo "$OUT"
         ;;
     deep_research)
         log "Route: deep_research → ALL providers + decomposition"
