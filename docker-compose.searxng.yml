@@ -20,7 +20,7 @@ services:
     container_name: searxng
     env_file: .env.searxng
     ports:
-      - "8889:8080"
+      - "127.0.0.1:8889:8080"
     volumes:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
     restart: unless-stopped
