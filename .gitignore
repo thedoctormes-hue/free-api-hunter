@@ -94,3 +94,6 @@ searxng/engines/__pycache__/
 configs/key_pool.json
 configs/key_pool.json.tmp
 data/rejected.json
+
+# Local settings.yml backups (contain api_keys - never commit)
+searxng/settings.yml.bak.*
