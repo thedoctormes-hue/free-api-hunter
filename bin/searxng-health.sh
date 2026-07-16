@@ -3,7 +3,7 @@
 # возвращает >0 результатов. HTTP 200 при CAPTCHA отдаёт пустой results —
 # это тихий отказ, который ловит только проверка results>0.
 #
-# Проверяет general search + каждый premium пул (exa/tavily/firecrawl/tinyfish/olostep).
+# Основной чек general идёт через engines=yandex; доп. сигналы — exa/tinyfish/olostep.
 set -u
 URL="${SEARXNG_URL:-http://localhost:8889/search}"
 FAILED=0
@@ -17,11 +17,13 @@ except Exception:
 }
 
 check_general() {
-  c=$(count_results "${URL}?q=OpenClaw&format=json&categories=general")
+  # Основной чек: general через конкретный рабочий движок (engines=yandex,
+  # без API-ключа), чтобы не маскировался ответами wikipedia/wikidata.
+  c=$(count_results "${URL}?q=OpenClaw&format=json&engines=yandex")
   if [ "${c:-0}" -gt 0 ]; then
-    echo "OK general ($c)"
+    echo "OK general (yandex: $c)"
   else
-    echo "DEGRADED general ($c)"
+    echo "DEGRADED general (yandex: $c)"
     FAILED=$((FAILED + 1))
   fi
 }
@@ -38,7 +40,8 @@ check_engine() {
 }
 
 check_general
-for e in exa tavily firecrawl tinyfish olostep; do
+# Доп. сигналы free-тира: exa/tinyfish/olostep (каждый в отдельном probe).
+for e in exa tinyfish olostep; do
   check_engine "$e"
 done
 
