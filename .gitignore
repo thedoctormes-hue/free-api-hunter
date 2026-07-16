@@ -23,6 +23,7 @@ vendor/
 bin/*
 # управляющие скрипты инфраструктуры коммитим:
 !bin/searxng-health.sh
+!bin/searxng-alert.sh
 !bin/lab-search-gateway-addkey.sh
 /hunter
 hunter_v2
