@@ -97,3 +97,6 @@ data/rejected.json
 
 # Local settings.yml backups (contain api_keys - never commit)
 searxng/settings.yml.bak.*
+
+# Orion Scan runtime stability-state (generated each run, not source)
+scripts/.orion-scan-state.json
