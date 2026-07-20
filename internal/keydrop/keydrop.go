@@ -12,8 +12,10 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +26,24 @@ import (
 )
 
 var logger = log.New(os.Stderr, "[keydrop] ", log.LstdFlags)
+
+// chownVaultGroup делает файл/папку читаемой группой mcp-gatekeeper, под
+// которой работает mcp-apikeys (non-root, F2/F3). keydrop запускается от
+// root, поэтому chown на группу возможен. Владелец остаётся root, права
+// 0640/0750 — читать может только root + группа mcp-gatekeeper.
+func chownVaultGroup(path string, mode os.FileMode) error {
+	if err := os.Chmod(path, mode); err != nil {
+		return err
+	}
+	if gr, err := user.LookupGroup("mcp-gatekeeper"); err == nil {
+		if gid, err := strconv.Atoi(gr.Gid); err == nil {
+			if err := os.Chown(path, -1, gid); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 // vaultBase — корень vault для free-api-hunter (совпадает с validator.vaultBase).
 // Это var (не const), чтобы тесты могли переопределить.
@@ -106,9 +126,12 @@ func Run(opts Options) error {
 		}
 
 		vdir := filepath.Join(vaultBase, provider)
-		if merr := os.MkdirAll(vdir, 0700); merr != nil {
+		if merr := os.MkdirAll(vdir, 0750); merr != nil {
 			logger.Printf("skip %s: mkdir vault %s: %v", f, vdir, merr)
 			continue
+		}
+		if cerr := chownVaultGroup(vdir, 0750); cerr != nil {
+			logger.Printf("chown vault dir %s: %v", vdir, cerr)
 		}
 
 		ecfg := em.Providers[provider]
@@ -118,9 +141,12 @@ func Run(opts Options) error {
 				name = fmt.Sprintf("api.key.%d", i)
 			}
 			vp := filepath.Join(vdir, name)
-			if werr := os.WriteFile(vp, []byte(k), 0600); werr != nil {
+			if werr := os.WriteFile(vp, []byte(k), 0640); werr != nil {
 				logger.Printf("write key %s: %v", vp, werr)
 				continue
+			}
+			if cerr := chownVaultGroup(vp, 0640); cerr != nil {
+				logger.Printf("chown key %s: %v", vp, cerr)
 			}
 			recs, verr := validator.ValidateKey(provider, name, ecfg, true, "")
 			if verr != nil {
