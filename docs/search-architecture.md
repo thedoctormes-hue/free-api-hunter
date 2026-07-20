@@ -5,6 +5,15 @@
 **Статус:** протестировано, 8/8 тестов пройдено
 **Авторы:** Бестия (Operator), консенсус агентов лаборатории
 
+> ⚠️ **КАНОНИЧНЫЙ ПУТЬ ВЕБ-ПОИСКА / DEEP RESEARCH ДЛЯ АГЕНТОВ — MCP-СЕРВЕР `searxng-gateway`.**
+> Агент использует ТОЛЬКО тулы `searxng-gateway__search_web` и `searxng-gateway__deep_research`.
+> Запрещено:
+> - запускать shell-скрипты (`search-orchestrator.sh`, `search-parallel.sh`, `search-check-keys.sh`) через `exec`;
+> - прямой вызов Tavily/SearXNG по API (curl/http, порты 8081/8082/8087/8100);
+> - нативный `web_search` / `memory_search` OpenClaw;
+> - отменённый MCP `lab-search` и `scripts/lab_search.py`.
+> Скрипты-оркестраторы ниже — это внутренний backend MCP-сервера `searxng-gateway`, агенту недоступны напрямую.
+
 ## Обзор
 
 Система веб-поиска для лаборатории LabDoctorM. Использует 4 провайдера с 15 API-ключами для максимальной пропускной способности и надёжности.
@@ -76,91 +85,90 @@
 
 ## Структура файлов
 
+> Все перечисленные скрипты — **внутренний backend** MCP-сервера `searxng-gateway`.
+> Агент их НЕ вызывает напрямую (см. раздел «Использование»).
+
 ```
-api-hub/
+free-api-hunter/
 ├── scripts/
-│   ├── search-orchestrator.sh    # Основной оркестратор
-│   ├── search-parallel.sh        # Параллельный поиск (Deep Research)
-│   └── search-check-keys.sh      # Проверка всех 15 ключей
+│   ├── search-orchestrator.sh    # Основной оркестратор (backend)
+│   ├── search-parallel.sh        # Параллельный поиск (Deep Research, backend)
+│   └── search-check-keys.sh      # Проверка всех 15 ключей (backend)
 ├── config/
 │   ├── search-keys.yaml          # Конфигурация ключей (chmod 600)
 │   └── .key-index-*              # State files для ротации
 ├── docs/
 │   └── search-architecture.md    # Этот файл
 ├── tests/
-│   └── test-providers.sh         # Тесты провайдеров
+│   └── test-providers.sh         # Тесты провайдеров (backend)
 └── logs/
     ├── search-orchestrator.log
     └── search-parallel.log
 ```
 
-## Использование
+## Использование (каноничный путь: MCP `searxng-gateway`)
 
-### Быстрый поиск (factual)
-```bash
-./scripts/search-orchestrator.sh "latest AI news" factual 5
+> Агент вызывает MCP-тулы сервера `searxng-gateway`. Никаких `exec` к скриптам,
+> никакого прямого Tavily/SearXNG API. Маршрутизация по провайдерам, ротация ключей
+> и fallback реализованы внутри gateway/бэкенда.
+
+### Быстрый веб-поиск (factual / broad / content / dynamic)
+```
+searxng-gateway__search_web(query="latest AI news", max_results=5)
 ```
 
-### Скрапинг страницы
-```bash
-./scripts/search-orchestrator.sh "https://example.com" content
+### Deep Research (веб + синтез + семантическая память лабы)
+```
+searxng-gateway__deep_research(query="OpenClaw architecture", count=10)
 ```
 
-### JS-тяжёлый сайт
-```bash
-./scripts/search-orchestrator.sh "https://spa-app.com" dynamic
-```
-
-### Deep Research
-```bash
-./scripts/search-orchestrator.sh "OpenClaw architecture" deep_research 10
-```
-
-### Параллельный поиск
-```bash
-./scripts/search-parallel.sh "AI agent frameworks" 5
-```
-
-### Проверка ключей
-```bash
-./scripts/search-check-keys.sh
-```
+### Проверка доступности поиска (только алерт/мониторинг инфраструктуры)
+Осуществляется скриптом `bin/searxng-health.sh`, а НЕ агентом. Из агента
+вызывать не нужно.
 
 ## Интеграция с агентами
 
-Агенты вызывают скрипты через `exec`:
+Агенты вызывают MCP-тулы `searxng-gateway__search_web` / `searxng-gateway__deep_research`
+(сервер `searxng-gateway`). Пример вызова из агента:
 
-```bash
-# Внутри агента:
-exec("bash /root/LabDoctorM/projects/api-hub/scripts/search-orchestrator.sh 'query' factual 5")
+```json
+{ "tool": "searxng-gateway__search_web", "arguments": { "query": "latest AI news", "max_results": 5 } }
 ```
 
-Профили агентов (из deep-research-lab):
+Профили агентов (из deep-research-lab) отражают ТОЛЬКО предпочтительный ТИП запроса,
+но ВСЕ они идут через один каноничный MCP `searxng-gateway`:
 - **raven** (Researcher): deep_research — все провайдеры
-- **dominika** (Scout): content + dynamic — Firecrawl + TinyFish
-- **mangust** (Analyst): factual + content — Tavily + Firecrawl + SearXNG
-- **streikbrecher** (Dev): factual + content — Tavily + Firecrawl GitHub
-- **antcat** (Builder): factual + broad — Tavily + SearXNG
-- **kotolizator** (Orch): factual — Tavily + SearXNG
-- **bestia** (Operator): factual — Tavily + SearXNG
-- **owl** (Auditor): factual + content — Tavily + SearXNG + Firecrawl
+- **dominika** (Scout): content + dynamic
+- **mangust** (Analyst): factual + content
+- **streikbrecher** (Dev): factual + content
+- **antcat** (Builder): factual + broad
+- **kotolizator** (Orch): factual
+- **bestia** (Operator): factual
+- **owl** (Auditor): factual + content
+
+> Запрещено: вызывать `search-orchestrator.sh`/`search-parallel.sh`/`search-check-keys.sh`
+> через `exec`, использовать нативный `web_search`/`memory_search`, отменённый MCP `lab-search`,
+> `scripts/lab_search.py` или прямой Tavily/SearXNG API. Все эти пути — dead/отменены.
 
 ## Отказоустойчивость
 
-**3 уровня надёжности:**
+**Единый каноничный путь — MCP `searxng-gateway`.** Маршрутизация по провайдерам,
+ротация ключей и fallback (Tavily→Firecrawl→TinyFish→SearXNG) реализованы ВНУТРИ
+backend-а gateway. Агент об этом не знает и не управляет им.
 
 ```
-Уровень 1 (основной): api-hub оркестратор → 15 ключей, 4 провайдера, ротация
-    ↓ при ошибке
-Уровень 2 (fallback): нативный web_search (OpenClaw) → Tavily, 1 ключ
-    ↓ при ошибке
-Уровень 3 (аварийный): сообщить пользователю "Поиск недоступен"
+Уровень 1 (каноничный): MCP searxng-gateway → search_web / deep_research
+    ↓ при ошибке (degraded) — gateway сам делает fallback по провайдерам
+Уровень 2 (аварийный): gateway возвращает {degraded:true} / ошибку →
+    агент сообщает пользователю, что поиск недоступен, и НЕ использует
+    неканоничные обходные пути (прямой API, нативный web_search, lab-search).
 ```
 
-- Агенты ВСЕГДА начинают с api-hub оркестратора
-- Нативный web_search — только при явной ошибке оркестратора
-- Мониторинг: cron-задача каждые 6 часов проверяет все 15 ключей
-- При проблемах — алерт в Telegram
+- Агент ВСЕГДА начинает с MCP `searxng-gateway`.
+- При `degraded:true` — результат всё ещё полезен (частичные данные).
+- При полной ошибке — сообщить пользователю «Поиск недоступен», без обходных путей.
+- Мониторинг здоровья поиска: `bin/searxng-health.sh` (инфраструктура, не агент).
+- При проблемах — алерт в Telegram.
 
 ## Безопасность
 
