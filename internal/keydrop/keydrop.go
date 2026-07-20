@@ -355,6 +355,8 @@ type PendingEntry struct {
 	VaultPath  string `json:"vault_path"`
 	LiveStatus string `json:"live_status"`
 	ReceivedAt string `json:"received_at"`
+	Attempts      int    `json:"attempts,omitempty"`
+	CooldownUntil string `json:"cooldown_until,omitempty"`
 }
 
 // AppendPendingValidation — дописать запись в pending_validation.json (массив).

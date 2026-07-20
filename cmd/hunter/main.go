@@ -43,6 +43,8 @@ const defaultPendingReviewPath = "/root/LabDoctorM/projects/free-api-hunter/data
 const defaultPendingValidationPath = "/root/LabDoctorM/projects/free-api-hunter/data/pending_validation.json"
 const defaultManusCli = "/root/LabDoctorM/projects/free-api-hunter/scripts/manus-outsourcing/dispatch_direct.py"
 const defaultManusKeys = "/root/LabDoctorM/projects/free-api-hunter/configs/manus-keys.json"
+const maxManusAttempts = 5
+const manusCooldown = 12 * time.Hour
 
 // Config — загруженная конфигурация источников
 type Config struct {
@@ -454,6 +456,14 @@ func runValidatePending(args []string) {
 	processed := 0
 	var failed []keydrop.PendingEntry
 	for _, e := range entries {
+		// Cooldown: не бомбим Manus, пока не пройдёт окно (защита от петли rate_limit)
+		if e.CooldownUntil != "" {
+			if cd, perr := time.Parse(time.RFC3339, e.CooldownUntil); perr == nil && time.Now().Before(cd) {
+				logger.Printf("cooldown %s until %s, skip (no Manus call)", e.KeyID, e.CooldownUntil)
+				failed = append(failed, e) // остаётся в очереди, но Manus не дёргаем
+				continue
+			}
+		}
 		ecfg := em.Providers[e.Provider]
 		if ecfg.Verified {
 			name := filepath.Base(e.VaultPath)
@@ -487,6 +497,17 @@ func runValidatePending(args []string) {
 		out, rerr := runManusTask(*manusCli, *manusKeys, prompt)
 		if rerr != nil {
 			logger.Printf("manus task %s: %v", e.KeyID, rerr)
+			if strings.Contains(rerr.Error(), "rate_limited") {
+				e.Attempts++
+				e.CooldownUntil = time.Now().Add(manusCooldown).Format(time.RFC3339)
+				if e.Attempts >= maxManusAttempts {
+					logger.Printf("entry %s exhausted Manus (%d attempts) — move to blocked + signal heartbeat", e.KeyID, e.Attempts)
+					moveToBlocked(*pending, e)
+					signalHeartbeat(e)
+					continue // НЕ возвращаем в активную очередь
+				}
+				logger.Printf("entry %s rate_limited (attempt %d) — cooldown until %s", e.KeyID, e.Attempts, e.CooldownUntil)
+			}
 			failed = append(failed, e)
 			continue
 		}
@@ -518,6 +539,47 @@ func runValidatePending(args []string) {
 		}
 	}
 	logger.Printf("validate-pending: обработано %d, осталось в очереди %d", processed, len(failed))
+}
+
+// moveToBlocked — вывести entry из активной очереди в blocked-файл (Manus исчерпан).
+func moveToBlocked(pendingPath string, e keydrop.PendingEntry) {
+	blockedPath := strings.TrimSuffix(pendingPath, ".json") + "_blocked.json"
+	var blk []keydrop.PendingEntry
+	if b, err := os.ReadFile(blockedPath); err == nil {
+		_ = json.Unmarshal(b, &blk)
+	}
+	blk = append(blk, e)
+	if out, err := json.MarshalIndent(blk, "", "  "); err == nil {
+		if werr := os.WriteFile(blockedPath, out, 0644); werr != nil {
+			logger.Printf("blocked write %s: %v", blockedPath, werr)
+		} else {
+			logger.Printf("entry %s moved to blocked queue: %s", e.KeyID, blockedPath)
+		}
+	}
+}
+
+// signalHeartbeat — сигнал Мангусту в heartbeat (Фаза 1 KRV): провайдер нуждается в человеческой курации.
+func signalHeartbeat(e keydrop.PendingEntry) {
+	var rev struct {
+		Pending []map[string]interface{} `json:"pending"`
+	}
+	if b, err := os.ReadFile(defaultPendingReviewPath); err == nil {
+		_ = json.Unmarshal(b, &rev)
+	}
+	rev.Pending = append(rev.Pending, map[string]interface{}{
+		"provider": e.Provider,
+		"source":   "krv-validate-pending",
+		"why_free": "Manus rate_limited after N attempts — needs human curation of instructions",
+		"found_at": time.Now().UTC().Format(time.RFC3339),
+		"reviewed": false,
+	})
+	if out, err := json.MarshalIndent(rev, "", "  "); err == nil {
+		if werr := os.WriteFile(defaultPendingReviewPath, out, 0644); werr != nil {
+			logger.Printf("review write %s: %v", defaultPendingReviewPath, werr)
+		} else {
+			logger.Printf("signaled heartbeat review for %s", e.Provider)
+		}
+	}
 }
 
 // readKeyNotes — достать instructions ключа из БД.
