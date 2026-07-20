@@ -41,10 +41,9 @@ var Version = "dev"
 // Не содержит секретов (только URL источников).
 const defaultPendingReviewPath = "/root/LabDoctorM/projects/free-api-hunter/data/pending_review.json"
 const defaultPendingValidationPath = "/root/LabDoctorM/projects/free-api-hunter/data/pending_validation.json"
-const defaultManusCli = "/root/LabDoctorM/projects/free-api-hunter/scripts/manus-outsourcing/dispatch_direct.py"
-const defaultManusKeys = "/root/LabDoctorM/projects/free-api-hunter/configs/manus-keys.json"
-const maxManusAttempts = 5
-const manusCooldown = 12 * time.Hour
+const defaultDeepResearchCli = "/root/LabDoctorM/projects/free-api-hunter/scripts/deep_research_cli.py"
+const maxDrAttempts = 5
+const drCooldown = 12 * time.Hour
 
 // Config — загруженная конфигурация источников
 type Config struct {
@@ -416,7 +415,7 @@ func runTriageApply(args []string) {
 // runValidatePending — подкоманда `hunter validate-pending`: забирает сигнал
 // pending_validation.json (сформирован keydrop) и довалидирует ключи.
 // Известные (verified) провайдеры — механически (validator.ValidateKey).
-// Неизвестные — через агента Manus (LLM-мозги): диспатч задачи в Manus API
+// Неизвестные — через deep_research (searxng-gateway: веб + семпамять лабы):
 // (только provider + notes, БЕЗ сырого ключа), результат пишется как instructions.
 // Это и есть «тонкий LLM-слой» из подхода #2.
 func runValidatePending(args []string) {
@@ -424,9 +423,8 @@ func runValidatePending(args []string) {
 	dataDir := fs.String("data-dir", "data", "Каталог с free-api-hunter.db")
 	endpoints := fs.String("endpoints", "/root/LabDoctorM/projects/free-api-hunter/config/validator_endpoints.json", "Карта endpoint'ов")
 	pending := fs.String("pending", defaultPendingValidationPath, "Путь к pending_validation.json")
-	manusCli := fs.String("manus-cli", defaultManusCli, "Путь к cli.py Manus")
-	manusKeys := fs.String("manus-keys", defaultManusKeys, "Путь к configs/manus-keys.json")
-	dryRun := fs.Bool("dry-run", false, "Не вызывать Manus, не писать в БД")
+	deepResearchCli := fs.String("deep-research-cli", defaultDeepResearchCli, "CLI deep_research (searxng-gateway: веб + семпамять)")
+	dryRun := fs.Bool("dry-run", false, "Не вызывать deep_research, не писать в БД")
 	fs.Parse(args)
 
 	if err := database.Init(*dataDir); err != nil {
@@ -456,11 +454,11 @@ func runValidatePending(args []string) {
 	processed := 0
 	var failed []keydrop.PendingEntry
 	for _, e := range entries {
-		// Cooldown: не бомбим Manus, пока не пройдёт окно (защита от петли rate_limit)
+		// Cooldown: не бомбим deep_research, пока не пройдёт окно (защита от зависания)
 		if e.CooldownUntil != "" {
 			if cd, perr := time.Parse(time.RFC3339, e.CooldownUntil); perr == nil && time.Now().Before(cd) {
-				logger.Printf("cooldown %s until %s, skip (no Manus call)", e.KeyID, e.CooldownUntil)
-				failed = append(failed, e) // остаётся в очереди, но Manus не дёргаем
+				logger.Printf("cooldown %s until %s, skip (no deep_research call)", e.KeyID, e.CooldownUntil)
+				failed = append(failed, e) // остаётся в очереди, но deep_research не дёргаем
 				continue
 			}
 		}
@@ -493,15 +491,15 @@ func runValidatePending(args []string) {
 			continue
 		}
 		notes := readKeyNotes(db, e.KeyID)
-		prompt := buildManusValidationPrompt(e.Provider, e.VaultPath, notes)
-		out, rerr := runManusTask(*manusCli, *manusKeys, prompt)
+		query := buildEndpointMapQuery(e.Provider, e.VaultPath, notes)
+		out, rerr := runDeepResearch(*deepResearchCli, query)
 		if rerr != nil {
-			logger.Printf("manus task %s: %v", e.KeyID, rerr)
+			logger.Printf("deep_research task %s: %v", e.KeyID, rerr)
 			if strings.Contains(rerr.Error(), "rate_limited") {
 				e.Attempts++
-				e.CooldownUntil = time.Now().Add(manusCooldown).Format(time.RFC3339)
-				if e.Attempts >= maxManusAttempts {
-					logger.Printf("entry %s exhausted Manus (%d attempts) — move to blocked + signal heartbeat", e.KeyID, e.Attempts)
+				e.CooldownUntil = time.Now().Add(drCooldown).Format(time.RFC3339)
+				if e.Attempts >= maxDrAttempts {
+					logger.Printf("entry %s exhausted deep_research (%d attempts) — move to blocked + signal heartbeat", e.KeyID, e.Attempts)
 					moveToBlocked(*pending, e)
 					signalHeartbeat(e)
 					continue // НЕ возвращаем в активную очередь
@@ -518,8 +516,9 @@ func runValidatePending(args []string) {
 			LiveStatus:    "valid",
 			AuthType:      ecfg.AuthType,
 			BaseURL:       ecfg.BaseURL,
-			Instructions:  cleanManusOutput(out),
-			AddedBy:       "krv-agent-manus",
+			Instructions:  out,
+			AddedBy:       "krv-deep-research",
+			Provenance:    "deep_research",
 			AddedAt:       time.Now().UTC().Format(time.RFC3339),
 			LastValidated: time.Now().UTC().Format(time.RFC3339),
 		}
@@ -528,7 +527,7 @@ func runValidatePending(args []string) {
 			failed = append(failed, e)
 			continue
 		}
-		logger.Printf("validated (agent/Manus) %s", e.KeyID)
+		logger.Printf("validated (deep_research) %s", e.KeyID)
 		processed++
 	}
 
@@ -541,7 +540,7 @@ func runValidatePending(args []string) {
 	logger.Printf("validate-pending: обработано %d, осталось в очереди %d", processed, len(failed))
 }
 
-// moveToBlocked — вывести entry из активной очереди в blocked-файл (Manus исчерпан).
+// moveToBlocked — вывести entry из активной очереди в blocked-файл (deep_research исчерпан).
 func moveToBlocked(pendingPath string, e keydrop.PendingEntry) {
 	blockedPath := strings.TrimSuffix(pendingPath, ".json") + "_blocked.json"
 	var blk []keydrop.PendingEntry
@@ -569,7 +568,7 @@ func signalHeartbeat(e keydrop.PendingEntry) {
 	rev.Pending = append(rev.Pending, map[string]interface{}{
 		"provider": e.Provider,
 		"source":   "krv-validate-pending",
-		"why_free": "Manus rate_limited after N attempts — needs human curation of instructions",
+		"why_free": "deep_research failed after N attempts — needs human curation of instructions",
 		"found_at": time.Now().UTC().Format(time.RFC3339),
 		"reviewed": false,
 	})
@@ -592,9 +591,10 @@ func readKeyNotes(db *sql.DB, keyID string) string {
 	return notes
 }
 
-// buildManusValidationPrompt — промпт к агенту Manus. Ключ НЕ передаётся
-// (остаётся локально); agent ищет документацию по провайдеру и пишет инструкцию.
-func buildManusValidationPrompt(provider, vaultPath, notes string) string {
+// buildEndpointMapQuery — поисковый запрос к deep_research. Ключ НЕ передаётся
+// (остаётся локально); deep_research ищет документацию по провайдеру и возвращает
+// copy-pasteable инструкции (база, auth, модели, тест-запрос).
+func buildEndpointMapQuery(provider, vaultPath, notes string) string {
 	prefix := ""
 	if b, err := os.ReadFile(vaultPath); err == nil {
 		s := strings.TrimSpace(string(b))
@@ -604,34 +604,34 @@ func buildManusValidationPrompt(provider, vaultPath, notes string) string {
 			prefix = s
 		}
 	}
-	return fmt.Sprintf("You are validating an API key for provider \"%s\". "+
-		"Observed key format: %s (the full secret is NOT available to you). "+
-		"Human notes from the drop file:\n%s\n\n"+
-		"Using public documentation, discover and return concise, copy-pasteable usage instructions for an agent: "+
+	return fmt.Sprintf("API provider \"%s\". Observed key format: %s (secret NOT available). "+
+		"Using public web documentation and lab knowledge, discover and return concise, copy-pasteable usage instructions for an agent: "+
 		"the API base URL, authentication method, how to list available models, and how to send a test completion/chat request. "+
-		"Do NOT ask for the secret key. Do NOT ask clarifying questions; if public documentation is unavailable, state that clearly. Be precise and factual.", provider, prefix, notes)
+		"Do NOT ask for the secret key. Be precise and factual. Human notes:\n%s", provider, prefix, notes)
 }
 
-// runManusTask — диспатч задачи в Manus через cli.py (run --wait) и вернуть результат.
-func runManusTask(cliPath, keysPath, prompt string) (string, error) {
+// runDeepResearch — вызов локального deep_research (searxng-gateway: веб + семпамять
+// лабы) через обёртку-скрипт. Возвращает текст answer (уже чистый JSON от скрипта).
+func runDeepResearch(cliPath, query string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "python3", cliPath, prompt, keysPath)
+	cmd := exec.CommandContext(ctx, "python3", cliPath, query)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return string(out), fmt.Errorf("%v: %s", err, string(out))
 	}
-	return string(out), nil
-}
-
-// cleanManusOutput — из вывода cli.py (run --wait) оставить только
-// фактический результат агента (после маркера «Результат:»), отбросив обвязку.
-func cleanManusOutput(raw string) string {
-	idx := strings.Index(raw, "Результат:")
-	if idx < 0 {
-		return strings.TrimSpace(raw)
+	var parsed struct {
+		Answer   string `json:"answer"`
+		Degraded bool   `json:"degraded"`
+		Error    string `json:"error"`
 	}
-	return strings.TrimSpace(raw[idx+len("Результат:"):])
+	if jerr := json.Unmarshal(out, &parsed); jerr != nil {
+		return strings.TrimSpace(string(out)), nil
+	}
+	if parsed.Error != "" {
+		return "", fmt.Errorf("deep_research error: %s", parsed.Error)
+	}
+	return strings.TrimSpace(parsed.Answer), nil
 }
 
 // runKeyDrop — подкоманда `hunter keydrop`: забирает .md с ключами

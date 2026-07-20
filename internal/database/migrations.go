@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // runMigrations — создать таблицы если не существуют
@@ -101,6 +102,13 @@ func runMigrations(db *sql.DB) error {
 	for _, q := range queries {
 		if _, err := db.Exec(q); err != nil {
 			return fmt.Errorf("migration failed: %v\n%s", err, q)
+		}
+	}
+	// Идемпотентное добавление колонки provenance (живая БД уже существует;
+	// SQLite не поддерживает ADD COLUMN IF NOT EXISTS — игнорируем duplicate column).
+	if _, err := db.Exec(`ALTER TABLE "keys" ADD COLUMN provenance TEXT NOT NULL DEFAULT 'unknown'`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("migration provenance: %v", err)
 		}
 	}
 	return nil

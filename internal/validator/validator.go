@@ -114,6 +114,7 @@ type KeyRecord struct {
 	Instructions   string
 	AddedBy        string
 	AddedAt        string
+	Provenance     string // источник instructions: endpoint_map | deep_research | hypothesis | unknown
 }
 
 // liveStatusFromResult — маппинг результата верификатора в live_status.
@@ -320,6 +321,9 @@ func loadProviderStatuses(dataDir string) map[string]string {
 
 // UpsertKey — вставить/обновить запись в таблице "keys".
 func UpsertKey(db *sql.DB, rec *KeyRecord) error {
+	if rec.Provenance == "" {
+		rec.Provenance = "unknown"
+	}
 	modelsJSON, err := json.Marshal(rec.Models)
 	if err != nil {
 		modelsJSON = []byte("[]")
@@ -327,8 +331,9 @@ func UpsertKey(db *sql.DB, rec *KeyRecord) error {
 	_, err = db.Exec(`
 		INSERT INTO "keys" (
 			provider, key_id, vault_path, registry_status, live_status,
-			last_validated, models, auth_type, base_url, instructions, added_by, added_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+			last_validated, models, auth_type, base_url, instructions, added_by, added_at,
+			provenance
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(key_id) DO UPDATE SET
 			provider=excluded.provider,
 			vault_path=excluded.vault_path,
@@ -339,10 +344,11 @@ func UpsertKey(db *sql.DB, rec *KeyRecord) error {
 			auth_type=excluded.auth_type,
 			base_url=excluded.base_url,
 			instructions=excluded.instructions,
-			added_at=excluded.added_at
+			added_at=excluded.added_at,
+			provenance=excluded.provenance
 	`, rec.Provider, rec.KeyID, rec.VaultPath, rec.RegistryStatus, rec.LiveStatus,
 		rec.LastValidated, string(modelsJSON), rec.AuthType, rec.BaseURL, rec.Instructions,
-		rec.AddedBy, rec.AddedAt)
+		rec.AddedBy, rec.AddedAt, rec.Provenance)
 	return err
 }
 
